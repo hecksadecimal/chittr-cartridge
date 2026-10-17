@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: Control \"vote\" enum has 101 values; the limit is 100"
+}

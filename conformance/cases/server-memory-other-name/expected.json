@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "server.wasm: export \"mem\" is a memory; only functions and \"memory\" may be exported"
+}

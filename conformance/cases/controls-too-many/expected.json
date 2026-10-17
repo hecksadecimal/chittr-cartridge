@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: \"controls\" declares 33 Controls; the limit is 32"
+}

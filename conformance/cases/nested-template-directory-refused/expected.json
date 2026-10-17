@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "templates/sub/: is not an allowed location; Cartridges may contain only manifest.json, server.wasm, canvas.wasm, templates/*.liquid and assets/**"
+}

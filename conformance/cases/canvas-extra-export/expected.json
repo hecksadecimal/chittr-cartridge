@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "canvas.wasm: export \"render\" is not a canvas export; canvas exports are start, frame, event"
+}

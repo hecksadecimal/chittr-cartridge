@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "server.wasm: export \"t\" is a table; only functions and \"memory\" may be exported"
+}

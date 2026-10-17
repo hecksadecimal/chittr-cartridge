@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: has an unknown key \"color\"; allowed keys are v, name, version, fonts, controls"
+}

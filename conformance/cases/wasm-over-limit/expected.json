@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "error": "server.wasm: is 53 bytes; the limit is 10",
+  "limits": {
+    "wasmBytes": 10
+  }
+}

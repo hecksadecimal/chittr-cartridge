@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "canvas.wasm: is not a valid WebAssembly module: *"
+}

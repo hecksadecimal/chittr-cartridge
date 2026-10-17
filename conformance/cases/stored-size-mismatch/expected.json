@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "server.wasm: stored size does not match its declared size"
+}

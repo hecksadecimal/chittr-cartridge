@@ -1,0 +1,238 @@
+{
+  "HookError": [
+    {
+      "code": "bad_state",
+      "message": "the bars could not be drawn"
+    }
+  ],
+  "CanvasReply": [
+    {},
+    {
+      "error": {
+        "code": "bad_state",
+        "message": "the bars could not be drawn"
+      }
+    }
+  ],
+  "CanvasErrorCode": [
+    "not_running",
+    "invalid",
+    "host",
+    "busy",
+    "too_large",
+    "limit",
+    "not_loaded",
+    "load_failed"
+  ],
+  "CanvasError": [
+    {
+      "code": "busy",
+      "message": "4 messages are already in flight"
+    }
+  ],
+  "CanvasHostReply": [
+    {},
+    {
+      "error": {
+        "code": "not_running",
+        "message": "the canvas is not running"
+      }
+    }
+  ],
+  "CanvasStartInput": [
+    {
+      "width": 640,
+      "height": 360,
+      "dpr": 2,
+      "prefersReducedMotion": false,
+      "state": {
+        "bars": [
+          {
+            "label": "Pepperoni",
+            "votes": 42
+          }
+        ]
+      },
+      "fullscreen": false
+    },
+    {
+      "width": 300,
+      "height": 150,
+      "dpr": 1,
+      "prefersReducedMotion": true,
+      "state": null,
+      "fullscreen": true
+    }
+  ],
+  "CanvasFrameInput": [
+    {
+      "t": 16234.5,
+      "dt": 16.7
+    }
+  ],
+  "CanvasEventType": [
+    "state",
+    "resize",
+    "visibility",
+    "pointer",
+    "key",
+    "focus",
+    "blur",
+    "reply",
+    "error",
+    "image_loaded",
+    "sound_loaded"
+  ],
+  "CanvasEventInput": [
+    {
+      "type": "state",
+      "state": {
+        "bars": []
+      }
+    },
+    {
+      "type": "resize",
+      "width": 640,
+      "height": 360,
+      "fullscreen": false
+    },
+    {
+      "type": "visibility",
+      "visible": false
+    },
+    {
+      "type": "pointer",
+      "action": "up",
+      "x": 120.5,
+      "y": 64,
+      "width": 320,
+      "height": 180,
+      "pointerId": 1,
+      "pointerType": "mouse",
+      "buttons": 0
+    },
+    {
+      "type": "key",
+      "action": "down",
+      "key": "ArrowLeft",
+      "code": "ArrowLeft"
+    },
+    {
+      "type": "focus"
+    },
+    {
+      "type": "blur"
+    },
+    {
+      "type": "reply",
+      "seq": 3,
+      "reply": {
+        "label": "Pineapple",
+        "votes": 42,
+        "percent": 30
+      }
+    },
+    {
+      "type": "error",
+      "seq": 3,
+      "code": "slow_down"
+    },
+    {
+      "type": "image_loaded",
+      "handle": 1,
+      "width": 256,
+      "height": 256
+    },
+    {
+      "type": "sound_loaded",
+      "handle": 2
+    },
+    {
+      "type": "error",
+      "handle": 1,
+      "code": "not_found",
+      "message": "there is no asset at \"pizza.webp\""
+    }
+  ],
+  "SetFpsInput": [
+    {
+      "fps": 30
+    }
+  ],
+  "MeasureTextInput": [
+    {
+      "family": "Mono",
+      "size": 12,
+      "weight": 700,
+      "text": "Pepperoni"
+    }
+  ],
+  "MeasureTextOutput": [
+    {
+      "width": 71.2,
+      "ascent": 9.1,
+      "descent": 2.3
+    },
+    {
+      "error": {
+        "code": "invalid",
+        "message": "measure_text needs family, size, weight and text"
+      }
+    }
+  ],
+  "CanvasSendInput": [
+    {
+      "message": {
+        "bar": 1
+      },
+      "seq": 3
+    },
+    {
+      "message": {
+        "bar": 1
+      }
+    }
+  ],
+  "CanvasLoadInput": [
+    {
+      "path": "pizza.webp"
+    }
+  ],
+  "CanvasLoadOutput": [
+    {
+      "handle": 1
+    },
+    {
+      "error": {
+        "code": "limit",
+        "message": "a canvas may load at most 16 images"
+      }
+    }
+  ],
+  "CanvasPlaySoundInput": [
+    {
+      "handle": 2
+    },
+    {
+      "handle": 2,
+      "volume": 0.5,
+      "loop": true
+    }
+  ],
+  "CanvasPlaySoundOutput": [
+    {
+      "id": 4
+    },
+    {
+      "error": {
+        "code": "busy",
+        "message": "at most 8 sounds may play at once"
+      }
+    }
+  ],
+  "CanvasStopSoundInput": [
+    {
+      "id": 4
+    }
+  ]
+}

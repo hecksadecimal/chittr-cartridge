@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: Control \"vote\" must declare 1 to 16 fields"
+}

@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "templates/card.liquid: inflates past its declared size of 100 bytes"
+}

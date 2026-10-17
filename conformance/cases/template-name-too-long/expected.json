@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "templates/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.liquid: template name is longer than 64 characters"
+}

@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "canvas.wasm: is not placed by any template; add <lc-canvas> to a template or remove canvas.wasm"
+}

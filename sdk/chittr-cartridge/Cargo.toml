@@ -1,0 +1,25 @@
+[package]
+name = "chittr-cartridge-sdk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Guest SDK for Chittr Cartridges (ABI v1): Server Guests and Canvas Guests"
+
+[lib]
+name = "chittr_cartridge"
+
+[features]
+default = ["server"]
+server = ["dep:serde", "dep:serde_json", "dep:extism-pdk", "dep:chittr-cartridge-macros", "dep:base64"]
+# The Canvas Guest API: a Canvas2D-like context that encodes the command buffer (see design.md). The encoder
+# itself needs no host, so its tests run natively.
+canvas = ["dep:serde", "dep:serde_json", "dep:extism-pdk"]
+
+[dependencies]
+base64 = { version = "0.22", optional = true }
+chittr-cartridge-macros = { path = "../chittr-cartridge-macros", optional = true }
+extism-pdk = { version = "=1.4.1", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }

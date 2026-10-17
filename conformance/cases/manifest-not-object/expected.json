@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: must be a JSON object"
+}

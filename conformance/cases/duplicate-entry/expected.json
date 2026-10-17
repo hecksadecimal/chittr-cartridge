@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "server.wasm: appears more than once in the archive"
+}

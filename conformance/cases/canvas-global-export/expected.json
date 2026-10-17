@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "canvas.wasm: export \"g\" is a global; only functions and \"memory\" may be exported"
+}

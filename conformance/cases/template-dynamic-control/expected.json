@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "templates/card.liquid: binds a Control whose name comes from Liquid; data-lc-control must name the Control literally"
+}

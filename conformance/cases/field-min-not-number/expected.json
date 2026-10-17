@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: Control \"vote\" field \"n\" min must be a finite number"
+}

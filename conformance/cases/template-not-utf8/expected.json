@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "templates/card.liquid: is not valid UTF-8"
+}

@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: font \"Mono\" names \"assets/missing.woff2\", which the archive does not carry"
+}

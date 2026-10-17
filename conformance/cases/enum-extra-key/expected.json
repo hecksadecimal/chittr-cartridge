@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: Control \"vote\" value must be { \"enum\": [...] }"
+}

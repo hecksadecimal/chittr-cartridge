@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: Control name \"Vote\" must start with a lowercase letter and use only lowercase letters, digits, \"-\" or \"_\" (at most 32 characters)"
+}

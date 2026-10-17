@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "assets/a.bin: uses compression method 12; only deflate (8) and stored (0) are supported"
+}

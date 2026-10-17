@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: data runs past the end of the archive"
+}

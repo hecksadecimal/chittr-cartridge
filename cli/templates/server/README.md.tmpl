@@ -1,0 +1,24 @@
+# __NAME__
+
+A Cartridge for Chittr. The Server Guest is `src/lib.rs`: its `render` Hook returns the data the card draws, and
+`cartridge/templates/card.liquid` draws it.
+
+__CANVAS_README__## Build and check
+
+```bash
+./build.sh                          # builds the wasm into cartridge/
+chittr-cartridge check cartridge    # validates the Cartridge with the server's rules
+chittr-cartridge pack cartridge     # writes __NAME__.cartridge, validated
+chittr-cartridge watch cartridge    # repacks and checks on every save
+```
+
+Upload the `.cartridge` in the Chittr composer, with **Publish as preview** on, to see it on a Chitt.
+
+## Files
+
+- `src/lib.rs`: the Hooks (yours). `src/pdk.rs` is generated: the bindings for the Hooks `src/lib.rs` defines.
+- `cartridge/`: `manifest.json`, `templates/card.liquid`, and `assets/`. The built wasm lands here too.
+- `Cargo.toml`: the Server Guest's crate. `chittr-cartridge` is the Cartridge SDK.
+
+To regenerate the bindings from the ABI schemas, scaffold with `xtp plugin init` and run
+`chittr-cartridge sync <scaffold-dir> .` here. The sync keeps only the Hooks `src/lib.rs` defines.

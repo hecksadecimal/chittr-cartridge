@@ -1,0 +1,1 @@
+{"v":1,"name":"A","version":"1","controls":{"vote":{"value":{"enum":["a","b"]}},"comment":{"fields":{"text":{"type":"string","maxLength":280},"stars":{"type":"number","min":1,"max":5},"yes":{"type":"boolean"}}}}}

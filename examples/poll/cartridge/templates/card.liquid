@@ -1,0 +1,27 @@
+<section class="poll" style="display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid #555; border-radius: 8px">
+  <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px"><lc-author></lc-author><lc-menu></lc-menu></div>
+  <div style="display: flex; align-items: center; gap: 10px; background-image: url({{ 'pizza.webp' | asset_url }}); background-size: 48px; background-repeat: no-repeat; background-position: right center; min-height: 48px">
+    <img src="{{ 'pizza.webp' | asset_url }}" alt="Pizza" width="40" height="40" style="border-radius: 6px">
+    <h2 style="font-family: Mono, monospace; font-size: 1.1rem; font-weight: 700; margin: 0">{{ question }}</h2>
+  </div>
+  <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px">
+    {% for option in options %}
+    <li style="display: flex; flex-direction: column; gap: 4px">
+      <button type="button" data-lc-control="vote" data-lc-value="{{ option.id }}" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid #444; border-radius: 6px; font-family: Mono, monospace; background-color: transparent; color: inherit; cursor: pointer; text-align: left">
+        <span>{{ option.label }}{% if option.voted %} (your vote){% endif %}</span>
+        <span style="opacity: 0.7; font-size: 0.85rem">{{ option.votes }} · {{ option.percent }}%</span>
+      </button>
+      <div style="height: 4px; width: {{ option.percent }}%; background-color: #888; border-radius: 2px"></div>
+    </li>
+    {% endfor %}
+  </ul>
+  <lc-canvas width="320" height="180" label="Poll results as a bar chart" fullscreen></lc-canvas>
+  {% if closed %}<p style="font-family: Mono, monospace; font-size: 0.85rem; font-weight: 700; margin: 0">closed</p>{% endif %}
+  {% unless signedIn %}<p style="opacity: 0.7; font-size: 0.85rem; margin: 0">Log in to vote.</p>{% endunless %}
+  <p style="opacity: 0.7; font-size: 0.85rem; margin: 0">{{ total }} votes{% if views %} · {{ views }} views{% endif %}</p>
+  <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap">
+    <lc-reply></lc-reply>
+    <lc-rechitt></lc-rechitt>
+  </div>
+  <lc-reactions></lc-reactions>
+</section>

@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "error": "cartridge: archive has 3 files; the limit is 2",
+  "limits": {
+    "files": 2
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: Control \"vote\" field \"t\" type must be \"string\", \"number\" or \"boolean\""
+}

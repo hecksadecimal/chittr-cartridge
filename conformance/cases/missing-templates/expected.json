@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "cartridge: has no templates/*.liquid files"
+}

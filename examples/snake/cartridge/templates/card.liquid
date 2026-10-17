@@ -1,0 +1,22 @@
+<section style="display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid #555; border-radius: 8px">
+  <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px"><lc-author></lc-author><lc-menu></lc-menu></div>
+  <h2 style="font-family: monospace; font-size: 1.1rem; font-weight: 700; margin: 0">Snake</h2>
+  <lc-canvas width="320" height="240" label="Snake game. Use arrow keys, WASD, or tap the direction buttons."></lc-canvas>
+  <div style="display: flex; flex-direction: column; gap: 4px">
+    <strong style="font-family: monospace">Top 5 scores by trolltag</strong>
+    {% if scores.size > 0 %}
+    <ol style="margin: 0; padding-left: 24px; font-family: monospace">
+      {% for entry in scores %}
+      <li>{{ entry.trolltag }} — {{ entry.score }}</li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p style="margin: 0; opacity: 0.7">No scores yet. Play a round to claim the first spot.</p>
+    {% endif %}
+  </div>
+  <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap">
+    <lc-reply></lc-reply>
+    <lc-rechitt></lc-rechitt>
+  </div>
+  <lc-reactions></lc-reactions>
+</section>

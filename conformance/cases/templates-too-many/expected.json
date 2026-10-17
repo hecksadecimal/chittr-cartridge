@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "cartridge: has 66 templates; the limit is 64"
+}

@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "error": "cartridge: archive is 486 bytes; the limit is 485",
+  "limits": {
+    "archiveBytes": 485
+  }
+}

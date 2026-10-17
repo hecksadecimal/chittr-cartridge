@@ -1,0 +1,9 @@
+<section style="display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid #555; border-radius: 8px">
+  <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px"><lc-author></lc-author><lc-menu></lc-menu></div>
+  <p style="margin: 0">Hello{% if observer %}, {{ observer.name }}{% else %}, stranger{% endif %}!</p>
+  <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap">
+    <lc-reply></lc-reply>
+    <lc-rechitt></lc-rechitt>
+  </div>
+  <lc-reactions></lc-reactions>
+</section>

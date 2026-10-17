@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "error": "cartridge: files inflate to 146 bytes; the limit is 100",
+  "limits": {
+    "inflatedBytes": 100
+  }
+}

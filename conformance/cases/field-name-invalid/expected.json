@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: Control \"vote\" field \"1x\" must start with a letter and use only letters, digits, \"-\" or \"_\""
+}

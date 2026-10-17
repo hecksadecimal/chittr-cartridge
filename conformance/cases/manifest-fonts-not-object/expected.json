@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: \"fonts\" must be an object mapping font names to asset paths"
+}

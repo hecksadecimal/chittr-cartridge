@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "templates/card.liquid: uses the undeclared Control \"\"; declare it under \"controls\" in manifest.json"
+}

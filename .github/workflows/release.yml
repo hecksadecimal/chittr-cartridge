@@ -1,0 +1,121 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions: {}
+
+env:
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-24.04
+            cross: false
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04
+            cross: true
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+            cross: false
+          - target: aarch64-apple-darwin
+            os: macos-15
+            cross: false
+          - target: x86_64-pc-windows-msvc
+            os: windows-2025
+            cross: false
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Add the target
+        run: rustup target add ${{ matrix.target }}
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --version 0.2.5 --locked
+      - name: Build the CLI with cargo
+        if: "!matrix.cross"
+        run: cargo build --release -p chittr-cartridge --target ${{ matrix.target }}
+      - name: Build the CLI with cross
+        if: matrix.cross
+        run: cross build --release -p chittr-cartridge --target ${{ matrix.target }}
+      - name: Package the zip
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -eu
+          binary=target/$TARGET/release/chittr-cartridge
+          case "$TARGET" in
+            *windows*) binary=$binary.exe ;;
+          esac
+          sh scripts/package-release.sh "${GITHUB_REF_NAME#v}" "$TARGET" "$binary" dist
+      - name: Upload the zip
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: chittr-cartridge-${{ matrix.target }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    name: Create the GitHub release
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - name: Download every zip
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          pattern: chittr-cartridge-*
+          path: dist
+          merge-multiple: true
+      - name: Write SHA256SUMS
+        run: |
+          set -eu
+          cd dist
+          sha256sum chittr-cartridge-*.zip > SHA256SUMS
+          cat SHA256SUMS
+      - name: Write the changelog
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+          previous=$(git describe --tags --abbrev=0 --match 'v*' "$TAG^" 2>/dev/null || true)
+          if [ -n "$previous" ]; then
+            range="$previous..$TAG"
+          else
+            range="$TAG"
+          fi
+          git log --no-merges --reverse --format='- %s' "$range" > release-notes.txt
+          echo "" >> release-notes.txt
+          echo "Verify your download against SHA256SUMS." >> release-notes.txt
+          cat release-notes.txt
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+          gh release create "$TAG" --verify-tag --title "$TAG" \
+            --notes-file release-notes.txt dist/*.zip dist/SHA256SUMS

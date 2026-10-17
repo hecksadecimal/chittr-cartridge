@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "assets/../server.wasm: contains an empty, '.' or '..' path segment"
+}

@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+env:
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  checks:
+    name: Format, lint and test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Add the rustfmt and clippy components and the wasm target
+        run: |
+          rustup component add rustfmt clippy
+          rustup target add wasm32-unknown-unknown
+      - name: Check formatting
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-features -- -D warnings
+      - name: Test
+        run: cargo test --workspace --all-features
+      - name: Run the conformance corpus
+        run: cargo test -p chittr-cartridge --test conformance
+
+  examples:
+    name: Build the examples and check them
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Add the wasm target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Build every example to wasm
+        run: sh scripts/build-examples.sh
+      - name: Build the CLI
+        run: cargo build --release -p chittr-cartridge
+      - name: Check every example's Cartridge
+        run: |
+          set -eu
+          for dir in examples/*/cartridge; do
+            echo "checking $dir"
+            ./target/release/chittr-cartridge check "$dir"
+          done

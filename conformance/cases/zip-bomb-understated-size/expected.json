@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "assets/bomb.bin: inflates past its declared size of 1000 bytes"
+}

@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "error": "cartridge: has 2 templates; the limit is 1",
+  "limits": {
+    "templateFiles": 1
+  }
+}

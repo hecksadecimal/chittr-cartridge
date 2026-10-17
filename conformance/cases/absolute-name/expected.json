@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "/manifest.json: must be a relative path with forward slashes"
+}

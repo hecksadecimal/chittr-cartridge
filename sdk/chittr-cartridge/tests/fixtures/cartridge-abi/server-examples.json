@@ -1,0 +1,862 @@
+{
+  "HookError": [
+    {
+      "code": "bad_state",
+      "message": "the tally cannot be moved"
+    }
+  ],
+  "ChittRef": [
+    {
+      "id": "chitt-1",
+      "posterId": "character-1",
+      "createdAt": "2026-10-16T00:00:00.000Z"
+    }
+  ],
+  "ObserverBadge": [
+    {
+      "id": "badge-1",
+      "name": "Founder"
+    }
+  ],
+  "Observer": [
+    {
+      "characterId": "character-2",
+      "userId": "user-2",
+      "name": "Mabel",
+      "trolltag": "mabel",
+      "discriminator": "0042",
+      "avatarUrl": null,
+      "bannerUrl": "https://example.test/banner.png",
+      "bio": "Likes pineapple.",
+      "ageSweeps": 3,
+      "bloodCaste": "Rust",
+      "textColor": "#ff8800",
+      "kultScore": 12,
+      "kullScore": 4,
+      "badges": [
+        {
+          "id": "badge-1",
+          "name": "Founder"
+        }
+      ],
+      "followsPoster": true,
+      "followedByPoster": false,
+      "frond": false,
+      "doNotDisturb": false,
+      "showOoc": true,
+      "mutualsOnlyMessages": false,
+      "isPoster": false,
+      "isPosterUser": false,
+      "isAdmin": false
+    }
+  ],
+  "CartridgeVersionRef": [
+    {
+      "version": "1.2.0",
+      "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+    }
+  ],
+  "ReactionType": [
+    "like",
+    "hate",
+    "pity",
+    "mediate"
+  ],
+  "PinType": [
+    "post",
+    "rechitt"
+  ],
+  "InitInput": [
+    {
+      "v": 1,
+      "hook": "init",
+      "chitt": {
+        "id": "chitt-1",
+        "posterId": "character-1",
+        "createdAt": "2026-10-16T00:00:00.000Z"
+      }
+    }
+  ],
+  "InitOutput": [
+    {
+      "content": "Which pizza topping is best?"
+    },
+    {
+      "content": "Which pizza topping is best?",
+      "quirks": false,
+      "ooc": true
+    }
+  ],
+  "RenderInput": [
+    {
+      "v": 1,
+      "hook": "render",
+      "chitt": {
+        "id": "chitt-1",
+        "posterId": "character-1",
+        "createdAt": "2026-10-16T00:00:00.000Z"
+      },
+      "observer": null
+    },
+    {
+      "v": 1,
+      "hook": "render",
+      "chitt": {
+        "id": "chitt-1",
+        "posterId": "character-1",
+        "createdAt": "2026-10-16T00:00:00.000Z"
+      },
+      "observer": {
+        "characterId": "character-2",
+        "userId": "user-2",
+        "name": "Mabel",
+        "trolltag": "mabel",
+        "discriminator": "0042",
+        "avatarUrl": null,
+        "bannerUrl": null,
+        "bio": null,
+        "ageSweeps": null,
+        "bloodCaste": "Rust",
+        "textColor": "#ff8800",
+        "kultScore": 0,
+        "kullScore": 0,
+        "badges": [],
+        "followsPoster": false,
+        "followedByPoster": false,
+        "frond": false,
+        "doNotDisturb": false,
+        "showOoc": false,
+        "mutualsOnlyMessages": false,
+        "isPoster": false,
+        "isPosterUser": false,
+        "isAdmin": false
+      }
+    }
+  ],
+  "RenderOutput": [
+    {
+      "template": "card",
+      "data": {
+        "text": "hello",
+        "options": [
+          {
+            "id": "olives",
+            "label": "Olives",
+            "votes": 4
+          }
+        ]
+      }
+    },
+    {
+      "template": "card",
+      "data": {},
+      "canvas": {
+        "bars": [
+          {
+            "label": "Olives",
+            "votes": 4
+          }
+        ]
+      }
+    }
+  ],
+  "ViewInput": [
+    {
+      "v": 1,
+      "hook": "on_view",
+      "chitt": {
+        "id": "chitt-1",
+        "posterId": "character-1",
+        "createdAt": "2026-10-16T00:00:00.000Z"
+      },
+      "observer": null
+    }
+  ],
+  "ViewOutput": [
+    {},
+    {
+      "error": {
+        "code": "bad_state",
+        "message": "the view could not be counted"
+      }
+    }
+  ],
+  "TimerInput": [
+    {
+      "v": 1,
+      "hook": "on_timer",
+      "chitt": {
+        "id": "chitt-1",
+        "posterId": "character-1",
+        "createdAt": "2026-10-16T00:00:00.000Z"
+      },
+      "name": "close",
+      "payload": null,
+      "scheduledFor": "2026-10-16T01:00:00.000Z"
+    },
+    {
+      "v": 1,
+      "hook": "on_timer",
+      "chitt": {
+        "id": "chitt-1",
+        "posterId": "character-1",
+        "createdAt": "2026-10-16T00:00:00.000Z"
+      },
+      "name": "digest",
+      "payload": {
+        "after": 3
+      },
+      "scheduledFor": "2026-10-16T01:00:00.000Z"
+    }
+  ],
+  "TimerOutput": [
+    {},
+    {
+      "error": {
+        "code": "bad_state",
+        "message": "the close could not be recorded"
+      }
+    }
+  ],
+  "ControlInput": [
+    {
+      "v": 1,
+      "hook": "on_control",
+      "chitt": {
+        "id": "chitt-1",
+        "posterId": "character-1",
+        "createdAt": "2026-10-16T00:00:00.000Z"
+      },
+      "observer": null,
+      "control": "vote",
+      "value": "olives"
+    },
+    {
+      "v": 1,
+      "hook": "on_control",
+      "chitt": {
+        "id": "chitt-1",
+        "posterId": "character-1",
+        "createdAt": "2026-10-16T00:00:00.000Z"
+      },
+      "observer": null,
+      "control": "comment",
+      "fields": {
+        "text": "Yes",
+        "stars": 4,
+        "anonymous": false
+      }
+    }
+  ],
+  "ControlOutput": [
+    {},
+    {
+      "error": {
+        "code": "bad_state",
+        "message": "the poll is closed"
+      }
+    }
+  ],
+  "MigrateInput": [
+    {
+      "v": 1,
+      "hook": "migrate",
+      "chitt": {
+        "id": "chitt-1",
+        "posterId": "character-1",
+        "createdAt": "2026-10-16T00:00:00.000Z"
+      },
+      "from": {
+        "version": "1.1.0",
+        "sha256": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
+      },
+      "to": {
+        "version": "1.2.0",
+        "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+      }
+    }
+  ],
+  "MigrateOutput": [
+    {},
+    {
+      "error": {
+        "code": "bad_state",
+        "message": "the tally cannot be moved"
+      }
+    }
+  ],
+  "CanvasMessageInput": [
+    {
+      "v": 1,
+      "hook": "on_canvas_message",
+      "chitt": {
+        "id": "chitt-1",
+        "posterId": "character-1",
+        "createdAt": "2026-10-16T00:00:00.000Z"
+      },
+      "observer": null,
+      "message": {
+        "bar": 1
+      },
+      "seq": 3
+    }
+  ],
+  "CanvasMessageOutput": [
+    {},
+    {
+      "reply": {
+        "label": "Pineapple",
+        "votes": 42,
+        "percent": 30
+      }
+    },
+    {
+      "rerender": true
+    },
+    {
+      "error": {
+        "code": "bad_state",
+        "message": "the bar is closed"
+      }
+    }
+  ],
+  "ReplyGateInput": [
+    {
+      "v": 1,
+      "hook": "on_reply",
+      "chitt": {
+        "id": "chitt-1",
+        "posterId": "character-1",
+        "createdAt": "2026-10-16T00:00:00.000Z"
+      },
+      "observer": null,
+      "characterId": "character-2",
+      "contentRaw": "I pick the bishop",
+      "contentQuirked": "I pick the bishop",
+      "isOoc": false,
+      "replyToPostId": "chitt-1"
+    }
+  ],
+  "ReactionGateInput": [
+    {
+      "v": 1,
+      "hook": "on_reaction",
+      "chitt": {
+        "id": "chitt-1",
+        "posterId": "character-1",
+        "createdAt": "2026-10-16T00:00:00.000Z"
+      },
+      "observer": null,
+      "type": "like",
+      "added": true
+    }
+  ],
+  "RechittGateInput": [
+    {
+      "v": 1,
+      "hook": "on_rechitt",
+      "chitt": {
+        "id": "chitt-1",
+        "posterId": "character-1",
+        "createdAt": "2026-10-16T00:00:00.000Z"
+      },
+      "observer": null,
+      "added": false
+    }
+  ],
+  "GateOutput": [
+    {},
+    {
+      "allow": true
+    },
+    {
+      "allow": false,
+      "message": "The poll is closed, so it takes no more replies."
+    },
+    {
+      "error": {
+        "code": "bad_state",
+        "message": "the gate failed"
+      }
+    }
+  ],
+  "AssetErrorCode": [
+    "not_found",
+    "too_large",
+    "invalid"
+  ],
+  "AssetError": [
+    {
+      "code": "not_found",
+      "message": "there is no asset at \"toppings.txt\""
+    }
+  ],
+  "KvErrorCode": [
+    "unavailable",
+    "timeout",
+    "quota_exceeded",
+    "key_too_large",
+    "value_too_large",
+    "not_integer",
+    "rate_limited",
+    "invalid_argument"
+  ],
+  "KvError": [
+    {
+      "code": "rate_limited",
+      "message": "this Hook call has made more than 500 host calls"
+    }
+  ],
+  "PosterErrorCode": [
+    "forbidden",
+    "not_found",
+    "invalid",
+    "denied",
+    "rate_limited",
+    "depth_exceeded",
+    "unavailable"
+  ],
+  "PosterError": [
+    {
+      "code": "denied",
+      "message": "The poll is closed, so it takes no more replies."
+    }
+  ],
+  "PushErrorCode": [
+    "not_allowed",
+    "quota_exceeded",
+    "invalid_argument",
+    "rate_limited",
+    "timeout"
+  ],
+  "PushError": [
+    {
+      "code": "quota_exceeded",
+      "message": "a Hook call may push to at most 20 targets"
+    }
+  ],
+  "AssetInput": [
+    {
+      "path": "toppings.txt"
+    }
+  ],
+  "AssetOutput": [
+    {
+      "bytes": "T2xpdmVzCg=="
+    },
+    {
+      "error": {
+        "code": "not_found",
+        "message": "there is no asset at \"toppings.txt\""
+      }
+    }
+  ],
+  "KvKeyInput": [
+    {
+      "key": "views"
+    }
+  ],
+  "KvGetOutput": [
+    {
+      "value": "MQ==",
+      "ttlSeconds": 120
+    },
+    {
+      "value": null
+    },
+    {
+      "value": null,
+      "error": {
+        "code": "unavailable",
+        "message": "the KV store is not configured"
+      }
+    }
+  ],
+  "KvSetInput": [
+    {
+      "key": "tally:olives",
+      "value": "MQ=="
+    },
+    {
+      "key": "tally:olives",
+      "value": "MQ==",
+      "ttlSeconds": 3600
+    }
+  ],
+  "KvSetOutput": [
+    {},
+    {
+      "error": {
+        "code": "value_too_large",
+        "message": "the value is over 1 MiB"
+      }
+    }
+  ],
+  "KvSetIfAbsentOutput": [
+    {
+      "set": true
+    },
+    {
+      "set": false
+    }
+  ],
+  "KvCompareAndSwapInput": [
+    {
+      "key": "tally:olives",
+      "expected": null,
+      "value": "MQ=="
+    },
+    {
+      "key": "tally:olives",
+      "expected": "MQ==",
+      "value": "Mg=="
+    }
+  ],
+  "KvSwapOutput": [
+    {
+      "swapped": true
+    },
+    {
+      "swapped": false
+    }
+  ],
+  "KvDeleteOutput": [
+    {
+      "deleted": true
+    }
+  ],
+  "KvIncrInput": [
+    {
+      "key": "views"
+    },
+    {
+      "key": "views",
+      "by": 5,
+      "ttlSeconds": 86400
+    }
+  ],
+  "KvIncrOutput": [
+    {
+      "value": 3
+    },
+    {
+      "value": 0,
+      "error": {
+        "code": "not_integer",
+        "message": "the value is not an integer"
+      }
+    }
+  ],
+  "KvListInput": [
+    {
+      "prefix": "tally:"
+    }
+  ],
+  "KvListOutput": [
+    {
+      "keys": [
+        "tally:olives",
+        "tally:peppers"
+      ],
+      "truncated": false
+    }
+  ],
+  "KvMgetInput": [
+    {
+      "keys": [
+        "tally:olives",
+        "tally:peppers"
+      ]
+    }
+  ],
+  "KvMgetOutput": [
+    {
+      "entries": [
+        {
+          "key": "tally:olives",
+          "value": "MQ=="
+        },
+        {
+          "key": "tally:peppers",
+          "value": null
+        }
+      ]
+    }
+  ],
+  "KvGetAllOutput": [
+    {
+      "entries": [
+        {
+          "key": "views",
+          "value": "MQ=="
+        }
+      ],
+      "truncated": false
+    }
+  ],
+  "ScheduleTimerInput": [
+    {
+      "name": "close",
+      "delaySeconds": 3600
+    },
+    {
+      "name": "digest",
+      "delaySeconds": 86400,
+      "payload": {
+        "after": 3
+      }
+    }
+  ],
+  "ScheduleTimerOutput": [
+    {},
+    {
+      "error": {
+        "code": "quota_exceeded",
+        "message": "a Chitt holds at most 100 timers outstanding"
+      }
+    }
+  ],
+  "CancelTimerInput": [
+    {
+      "name": "close"
+    }
+  ],
+  "CancelTimerOutput": [
+    {
+      "cancelled": true
+    },
+    {
+      "cancelled": false
+    }
+  ],
+  "PushRenderInput": [
+    {},
+    {
+      "characterId": "character-2"
+    }
+  ],
+  "PushRenderOutput": [
+    {},
+    {
+      "error": {
+        "code": "not_allowed",
+        "message": "push_render is not allowed in render"
+      }
+    }
+  ],
+  "PostIdInput": [
+    {
+      "postId": "chitt-1"
+    }
+  ],
+  "PostReplyInput": [
+    {
+      "postId": "chitt-1",
+      "content": "Pineapple"
+    },
+    {
+      "postId": "chitt-1",
+      "content": "Pineapple",
+      "ooc": true
+    }
+  ],
+  "PostChittInput": [
+    {
+      "content": "A new Chitt"
+    }
+  ],
+  "EditChittInput": [
+    {
+      "content": "Closed."
+    },
+    {
+      "postId": "chitt-9",
+      "content": "Closed.",
+      "quirks": false,
+      "ooc": false
+    }
+  ],
+  "ReactInput": [
+    {
+      "postId": "chitt-1",
+      "type": "like"
+    }
+  ],
+  "FollowInput": [
+    {
+      "characterId": "character-2"
+    }
+  ],
+  "PinInput": [
+    {
+      "postId": "chitt-1"
+    },
+    {
+      "postId": "chitt-1",
+      "type": "rechitt"
+    }
+  ],
+  "PosterActionOutput": [
+    {
+      "ok": true
+    },
+    {
+      "ok": true,
+      "deferred": true
+    },
+    {
+      "error": {
+        "code": "denied",
+        "message": "The poll is closed, so it takes no more replies."
+      }
+    }
+  ],
+  "PostIdOutput": [
+    {
+      "ok": true,
+      "postId": "chitt-9"
+    },
+    {
+      "ok": true,
+      "deferred": true
+    },
+    {
+      "error": {
+        "code": "forbidden",
+        "message": "this Hook call has no poster to act as"
+      }
+    }
+  ],
+  "ReactOutput": [
+    {
+      "ok": true,
+      "action": "added",
+      "likeCount": 3,
+      "hateCount": 0,
+      "pityCount": 1,
+      "mediateCount": 0
+    },
+    {
+      "ok": true,
+      "deferred": true
+    }
+  ],
+  "RechittOutput": [
+    {
+      "ok": true,
+      "rechittId": "chitt-10"
+    },
+    {
+      "ok": true,
+      "deferred": true
+    }
+  ],
+  "FollowOutput": [
+    {
+      "ok": true,
+      "action": "added"
+    },
+    {
+      "ok": true,
+      "deferred": true
+    }
+  ],
+  "AdminEditPostInput": [
+    {
+      "postId": "chitt-1",
+      "content": "Edited by a moderator."
+    }
+  ],
+  "BanUserInput": [
+    {
+      "userId": "user-2",
+      "duration": "7d",
+      "reason": "Harassment."
+    },
+    {
+      "userId": "user-2",
+      "duration": "permanent"
+    }
+  ],
+  "UserIdInput": [
+    {
+      "userId": "user-2"
+    }
+  ],
+  "SuspendCharacterInput": [
+    {
+      "characterId": "character-2",
+      "duration": "24h",
+      "reason": "Spam."
+    }
+  ],
+  "CharacterIdInput": [
+    {
+      "characterId": "character-2"
+    }
+  ],
+  "AdminUpdateTrolltagInput": [
+    {
+      "characterId": "character-2",
+      "trolltag": "mabel"
+    }
+  ],
+  "AdminUpdateNameInput": [
+    {
+      "characterId": "character-2",
+      "name": "Mabel"
+    }
+  ],
+  "AdminUpdateBioInput": [
+    {
+      "characterId": "character-2",
+      "bio": "Likes pineapple."
+    }
+  ],
+  "AdminUpdateDiscriminatorInput": [
+    {
+      "characterId": "character-2",
+      "discriminator": "0042"
+    }
+  ],
+  "CreateBadgeInput": [
+    {
+      "name": "Founder",
+      "description": "Here at the start.",
+      "imageDataUri": "data:image/png;base64,iVBORw0KGgo="
+    }
+  ],
+  "BadgeIdInput": [
+    {
+      "badgeId": "badge-1"
+    }
+  ],
+  "UserBadgeInput": [
+    {
+      "userId": "user-2",
+      "badgeId": "badge-1"
+    }
+  ],
+  "CharacterBadgeInput": [
+    {
+      "characterId": "character-2",
+      "badgeId": "badge-1"
+    }
+  ],
+  "KvMgetEntry": [
+    {
+      "key": "tally:olives",
+      "value": "MQ=="
+    },
+    {
+      "key": "tally:peppers",
+      "value": null
+    }
+  ],
+  "KvEntry": [
+    {
+      "key": "views",
+      "value": "MQ=="
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: font \"Mono\" path \"fonts/mono.woff2\" must be a file under assets/"
+}

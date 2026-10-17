@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: Control \"vote\" field \"t\" maxLength must be an integer from 1 to 2000"
+}

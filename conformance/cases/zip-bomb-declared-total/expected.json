@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "cartridge: files inflate to 78643346 bytes; the limit is 67108864"
+}

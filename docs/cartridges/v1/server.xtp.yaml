@@ -1,0 +1,1651 @@
+# The Server Guest's ABI v1 as an XTP schema (version v1-draft). The source of truth for what the host calls
+# (exports, the Hooks) and what a guest may import (imports, the host functions). See design.md and abi.md in
+# this directory. Every Hook and host function listed here must be implemented by the host, and a host that drifts
+# from these schemas is not running Cartridge ABI v1.
+#
+# Shape rules this file follows:
+# - Every input and output is one application/json object. Byte payloads are base64 (type string, format byte).
+# - Every output may carry `error: HookError` (Hooks) or a domain error (host functions). Failures are never traps.
+# - Hook returns are plain objects. Gates return GateOutput: { allow?, message? }, where a missing allow means allow.
+# - XTP has no unions, no untyped values and no named maps. Where the wire is "any JSON", the schema says `object`;
+#   the description says what the host really accepts. Maps are inline `type: object` with `additionalProperties`.
+# - Every object schema lists its `required` fields explicitly. An object whose fields are all optional says
+#   `required: []`: the Rust generator (xtp plugin init) makes an object with no required list all-required,
+#   so it would serialize every field, `error` included. Every host function's output says `required: []` too: on
+#   failure it answers `error` alone, and the guest must still read that answer. An object is never empty (the
+#   generator rejects `properties: {}`), so an output with no fields carries its optional `error`.
+version: v1-draft
+exports:
+  init:
+    description: Runs once when a Cartridge Version is published. Its content becomes the Chitt's text.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/InitInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/InitOutput"
+  render:
+    description: Runs on every view, under a 500 ms deadline. Returns the template to draw and the data it draws with.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/RenderInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/RenderOutput"
+  on_control:
+    description: Runs when an Observer uses a Control on the card, under a 1 s deadline.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/ControlInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/ControlOutput"
+  on_reply:
+    description: A gate on a proposed direct reply. Runs before the reply commits, and fails open.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/ReplyGateInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/GateOutput"
+  on_reaction:
+    description: A gate on an added reaction. A removal (added false) is a notification whose return is ignored.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/ReactionGateInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/GateOutput"
+  on_rechitt:
+    description: A gate on an added rechitt. A removal (added false) is a notification whose return is ignored.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/RechittGateInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/GateOutput"
+  on_view:
+    description: A real impression of the Chitt, reported once per Observer per 24 hours, under the background deadline.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/ViewInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/ViewOutput"
+  on_timer:
+    description: Runs when a timer the Server Guest scheduled fires. Timers are delivered at least once.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/TimerInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/TimerOutput"
+  on_canvas_message:
+    description: Runs when the Canvas Guest sends a message with send. Its reply goes back only to that canvas.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasMessageInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasMessageOutput"
+  migrate:
+    description: Runs on the incoming Cartridge Version when it replaces or rolls back another. Its error keeps the old version.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/MigrateInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/MigrateOutput"
+imports:
+  asset:
+    description: Reads a file the Cartridge carries under assets/. Read-only. The bytes come back base64 encoded.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/AssetInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/AssetOutput"
+  kv_get:
+    description: Reads one KV entry by key. A missing key answers value null.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/KvKeyInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/KvGetOutput"
+  kv_set:
+    description: Writes one KV entry, replacing any value. A ttlSeconds sets or replaces the expiry; absent keeps it.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/KvSetInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/KvSetOutput"
+  kv_set_if_absent:
+    description: Writes one KV entry only when its key is absent. set is false when the key already existed.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/KvSetInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/KvSetIfAbsentOutput"
+  kv_compare_and_swap:
+    description: Writes value only when the current value equals expected (null means absent). swapped reports the outcome.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/KvCompareAndSwapInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/KvSwapOutput"
+  kv_delete:
+    description: Deletes one KV entry. deleted is false when the key was absent.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/KvKeyInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/KvDeleteOutput"
+  kv_incr:
+    description: Adds by (default 1) to an integer counter, creating it at 0. The result keeps every digit of an int64.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/KvIncrInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/KvIncrOutput"
+  kv_list:
+    description: Lists the keys starting with a prefix, at most 1000 of them. truncated says there were more.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/KvListInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/KvListOutput"
+  kv_mget:
+    description: Reads several KV entries at once. Each key maps to its base64 value, or null when absent.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/KvMgetInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/KvMgetOutput"
+  kv_get_all:
+    description: Reads every KV entry of the Chitt, at most 1000 of them. truncated says there were more. Takes no input.
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/KvGetAllOutput"
+  schedule_timer:
+    description: Schedules a named timer to fire after delaySeconds, replacing any timer of the same name. Its payload comes back in on_timer.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/ScheduleTimerInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/ScheduleTimerOutput"
+  cancel_timer:
+    description: Cancels the timer with this name. cancelled is false when no such timer was outstanding.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/CancelTimerInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/CancelTimerOutput"
+  push_render:
+    description: Queues a Render Push, published only once the calling Hook commits. Not allowed in render.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/PushRenderInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PushRenderOutput"
+  post_reply:
+    description: Posts a reply as the Chitt's poster. Poster Action.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/PostReplyInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PostIdOutput"
+  post_chitt:
+    description: Posts a new Chitt as the poster. Poster Action.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/PostChittInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PostIdOutput"
+  edit_chitt:
+    description: Edits a Chitt the poster wrote. Without postId it edits the Chitt itself. Poster Action.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/EditChittInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  delete_chitt:
+    description: Deletes a Chitt the poster wrote, which needs the post_deletion permission. Poster Action.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/PostIdInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  react:
+    description: Adds a reaction as the poster. Poster Action.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/ReactInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/ReactOutput"
+  unreact:
+    description: Removes a reaction as the poster. Poster Action.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/ReactInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/ReactOutput"
+  rechitt:
+    description: Rechitts a Chitt as the poster. Poster Action.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/PostIdInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/RechittOutput"
+  unrechitt:
+    description: Removes the poster's rechitt of a Chitt. Poster Action.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/PostIdInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  follow:
+    description: Follows a Character as the poster. Poster Action.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/FollowInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/FollowOutput"
+  unfollow:
+    description: Unfollows a Character as the poster. Poster Action.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/FollowInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/FollowOutput"
+  pin:
+    description: Pins a Chitt or rechitt to the poster's profile. Poster Action.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/PinInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  unpin:
+    description: Removes the poster's pin. Takes no input. Poster Action.
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  admin_delete_post:
+    description: "Deletes any Chitt, as an admin. Needs the post_deletion permission on the poster's account."
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/PostIdInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  admin_edit_post:
+    description: "Edits any Chitt, as an admin. Needs the post_editing permission on the poster's account."
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/AdminEditPostInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  admin_pin_chitt:
+    description: "Pins a Chitt site-wide, as an admin. Needs the pin_chitt permission on the poster's account."
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/PostIdInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  admin_unpin_chitt:
+    description: "Removes a site-wide pin, as an admin. Needs the pin_chitt permission on the poster's account."
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/PostIdInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  ban_user:
+    description: "Bans a user for a duration, as an admin. Needs the user_banning permission on the poster's account."
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/BanUserInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  unban_user:
+    description: "Lifts a user's ban, as an admin. Needs the user_banning permission on the poster's account."
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/UserIdInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  suspend_character:
+    description: "Suspends a Character for a duration, as an admin. Needs the character_suspension permission on the poster's account."
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/SuspendCharacterInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  unsuspend_character:
+    description: "Lifts a Character's suspension, as an admin. Needs the character_suspension permission on the poster's account."
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/CharacterIdInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  admin_delete_character:
+    description: "Deletes a Character, as an admin. Needs the character_deletion permission on the poster's account."
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/CharacterIdInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  admin_update_trolltag:
+    description: "Changes a Character's trolltag, as an admin. Needs the character_suspension permission on the poster's account."
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/AdminUpdateTrolltagInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  admin_update_character_name:
+    description: "Changes a Character's name, as an admin. Needs the character_suspension permission on the poster's account."
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/AdminUpdateNameInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  admin_update_character_bio:
+    description: "Changes a Character's bio, as an admin. Needs the character_suspension permission on the poster's account."
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/AdminUpdateBioInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  admin_update_character_discriminator:
+    description: "Changes a Character's discriminator, as an admin. Needs the character_suspension permission on the poster's account."
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/AdminUpdateDiscriminatorInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  create_badge:
+    description: "Creates a badge, as an admin. Needs the badge_management permission on the poster's account."
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/CreateBadgeInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  delete_badge:
+    description: "Deletes a badge, as an admin. Needs the badge_management permission on the poster's account."
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/BadgeIdInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  grant_badge_to_user:
+    description: "Grants a badge to a user, as an admin. Needs the badge_management permission on the poster's account."
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/UserBadgeInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  revoke_badge_from_user:
+    description: "Revokes a badge from a user, as an admin. Needs the badge_management permission on the poster's account."
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/UserBadgeInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  grant_badge_to_character:
+    description: "Grants a badge to a Character, as an admin. Needs the grant_badge permission on the poster's account."
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/CharacterBadgeInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+  revoke_badge_from_character:
+    description: "Revokes a badge from a Character, as an admin. Needs the revoke_badge permission on the poster's account."
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/CharacterBadgeInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/PosterActionOutput"
+components:
+  schemas:
+    # ---- Shared envelope parts -------------------------------------------------------------------------------
+    HookError:
+      description: A failure the guest reports itself, returned as the error field of an output. The host reads it as guest_error and never passes the guest's code on to the Observer.
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: The guest's own code, such as not_found or bad_state. At most 64 characters.
+        message:
+          type: string
+          description: Plain text for the failure log. The host keeps the first 1024 characters.
+    ChittRef:
+      description: The Chitt the Cartridge is attached to.
+      required:
+        - id
+        - posterId
+        - createdAt
+      properties:
+        id:
+          type: string
+          description: The Chitt's id.
+        posterId:
+          type: string
+          description: The id of the Character that posted it.
+        createdAt:
+          type: string
+          format: date-time
+          description: When the Chitt was created, as an ISO 8601 UTC time.
+    ObserverBadge:
+      description: A badge an Observer holds.
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          description: The badge's id.
+        name:
+          type: string
+          description: The badge's display name.
+    Observer:
+      description: The Character viewing or interacting with a Chitt. Observer is null in the envelope when the viewer is logged out. The host selects exactly these fields; nothing else from the database reaches a guest.
+      required:
+        - characterId
+        - userId
+        - name
+        - trolltag
+        - discriminator
+        - avatarUrl
+        - bannerUrl
+        - bio
+        - ageSweeps
+        - bloodCaste
+        - textColor
+        - kultScore
+        - kullScore
+        - badges
+        - followsPoster
+        - followedByPoster
+        - frond
+        - doNotDisturb
+        - showOoc
+        - mutualsOnlyMessages
+        - isPoster
+        - isPosterUser
+        - isAdmin
+      properties:
+        characterId:
+          type: string
+          description: The Character's id.
+        userId:
+          type: string
+          description: The owning user's id. Raw by human choice; a guest can leak it into rendered output.
+        name:
+          type: string
+          description: The Character's display name.
+        trolltag:
+          type: string
+          description: The Character's trolltag.
+        discriminator:
+          type: string
+          description: The Character's discriminator.
+        avatarUrl:
+          type: string
+          nullable: true
+          description: The avatar's URL, or null.
+        bannerUrl:
+          type: string
+          nullable: true
+          description: The banner's URL, or null.
+        bio:
+          type: string
+          nullable: true
+          description: The bio, or null.
+        ageSweeps:
+          type: integer
+          format: int32
+          nullable: true
+          description: The Character's age in sweeps, or null.
+        bloodCaste:
+          type: string
+          description: The Character's blood caste.
+        textColor:
+          type: string
+          description: The Character's text colour.
+        kultScore:
+          type: integer
+          format: int32
+          description: The Character's kult score.
+        kullScore:
+          type: integer
+          format: int32
+          description: The Character's kull score.
+        badges:
+          type: array
+          description: The Character's badges.
+          items:
+            $ref: "#/components/schemas/ObserverBadge"
+        followsPoster:
+          type: boolean
+          description: Whether the Observer follows the poster.
+        followedByPoster:
+          type: boolean
+          description: Whether the poster follows the Observer.
+        frond:
+          type: boolean
+          description: Whether both follow each other.
+        doNotDisturb:
+          type: boolean
+          description: The effective do-not-disturb preference (Character and user values combined).
+        showOoc:
+          type: boolean
+          description: The effective show-OOC preference.
+        mutualsOnlyMessages:
+          type: boolean
+          description: The effective preference to take messages from mutuals only.
+        isPoster:
+          type: boolean
+          description: Whether this Character is the Chitt's poster.
+        isPosterUser:
+          type: boolean
+          description: Whether this Character belongs to the poster's user.
+        isAdmin:
+          type: boolean
+          description: Whether the Observer's user is an admin.
+    CartridgeVersionRef:
+      description: One Cartridge Version as a migrate envelope names it.
+      required:
+        - version
+        - sha256
+      properties:
+        version:
+          type: string
+          description: The author's version string.
+        sha256:
+          type: string
+          description: The sha256 of the version's archive, in hex.
+    ReactionType:
+      description: The reaction types a Chitt sees and may add.
+      type: string
+      enum:
+        - like
+        - hate
+        - pity
+        - mediate
+    PinType:
+      description: What a pin points at.
+      type: string
+      enum:
+        - post
+        - rechitt
+    # ---- Hook inputs ------------------------------------------------------------------------------------------
+    InitInput:
+      description: Input to init, which runs once at publish. It has no observer key.
+      required:
+        - v
+        - hook
+        - chitt
+      properties:
+        v:
+          type: integer
+          format: int32
+          description: The ABI version. Always 1.
+        hook:
+          type: string
+          description: The Hook's name, init.
+        chitt:
+          $ref: "#/components/schemas/ChittRef"
+    RenderInput:
+      description: Input to render, which runs on every view. Observer is null for a logged-out viewer.
+      required:
+        - v
+        - hook
+        - chitt
+        - observer
+      properties:
+        v:
+          type: integer
+          format: int32
+          description: The ABI version. Always 1.
+        hook:
+          type: string
+          description: The Hook's name, render.
+        chitt:
+          $ref: "#/components/schemas/ChittRef"
+        observer:
+          $ref: "#/components/schemas/Observer"
+          nullable: true
+    ViewInput:
+      description: Input to on_view, a real impression of the Chitt by a logged-in Observer.
+      required:
+        - v
+        - hook
+        - chitt
+        - observer
+      properties:
+        v:
+          type: integer
+          format: int32
+          description: The ABI version. Always 1.
+        hook:
+          type: string
+          description: The Hook's name, on_view.
+        chitt:
+          $ref: "#/components/schemas/ChittRef"
+        observer:
+          $ref: "#/components/schemas/Observer"
+          nullable: true
+    TimerInput:
+      description: Input to on_timer, a timer the Server Guest scheduled has fired. It has no observer key.
+      required:
+        - v
+        - hook
+        - chitt
+        - name
+        - payload
+        - scheduledFor
+      properties:
+        v:
+          type: integer
+          format: int32
+          description: The ABI version. Always 1.
+        hook:
+          type: string
+          description: The Hook's name, on_timer.
+        chitt:
+          $ref: "#/components/schemas/ChittRef"
+        name:
+          type: string
+          description: The name the timer was scheduled under.
+        payload:
+          type: object
+          nullable: true
+          description: The payload it was scheduled with, or null when none. XTP has no untyped value, so this is typed as an object; the host passes any JSON of at most 16 KiB.
+        scheduledFor:
+          type: string
+          format: date-time
+          description: When the timer was due, as an ISO 8601 UTC time.
+    ControlInput:
+      description: Input to on_control. The host has checked control and its value or fields against the manifest, so the guest sees only declared Controls with valid payloads.
+      required:
+        - v
+        - hook
+        - chitt
+        - observer
+        - control
+      properties:
+        v:
+          type: integer
+          format: int32
+          description: The ABI version. Always 1.
+        hook:
+          type: string
+          description: The Hook's name, on_control.
+        chitt:
+          $ref: "#/components/schemas/ChittRef"
+        observer:
+          $ref: "#/components/schemas/Observer"
+          nullable: true
+        control:
+          type: string
+          description: The name the manifest declares for the Control.
+        value:
+          type: string
+          description: The chosen value, for a value Control. Absent for a fields Control.
+        fields:
+          type: object
+          description: The field values, for a fields Control. Each value is a string, a number or a boolean, as the manifest declares; XTP has no union, so the schema types the map as an object.
+    MigrateInput:
+      description: Input to migrate, run by the incoming Cartridge Version on replacement or rollback. It has no observer key.
+      required:
+        - v
+        - hook
+        - chitt
+        - from
+        - to
+      properties:
+        v:
+          type: integer
+          format: int32
+          description: The ABI version. Always 1.
+        hook:
+          type: string
+          description: The Hook's name, migrate.
+        chitt:
+          $ref: "#/components/schemas/ChittRef"
+        from:
+          $ref: "#/components/schemas/CartridgeVersionRef"
+        to:
+          $ref: "#/components/schemas/CartridgeVersionRef"
+    CanvasMessageInput:
+      description: Input to on_canvas_message, one message from the Canvas Guest's send. Observer is null for a logged-out viewer.
+      required:
+        - v
+        - hook
+        - chitt
+        - observer
+        - message
+      properties:
+        v:
+          type: integer
+          format: int32
+          description: The ABI version. Always 1.
+        hook:
+          type: string
+          description: The Hook's name, on_canvas_message.
+        chitt:
+          $ref: "#/components/schemas/ChittRef"
+        observer:
+          $ref: "#/components/schemas/Observer"
+          nullable: true
+        message:
+          type: object
+          description: The JSON the canvas sent, at most 4 KiB. XTP has no untyped value, so this is typed as an object; the host passes any JSON.
+        seq:
+          type: integer
+          format: int32
+          description: The canvas's sequence number, echoed on its reply event. Present only when the canvas sent one.
+    ReplyGateInput:
+      description: Input to on_reply, a gate on a proposed direct reply. The reply has no id yet, because the gate runs before it commits.
+      required:
+        - v
+        - hook
+        - chitt
+        - observer
+        - characterId
+        - contentRaw
+        - contentQuirked
+        - isOoc
+        - replyToPostId
+      properties:
+        v:
+          type: integer
+          format: int32
+          description: The ABI version. Always 1.
+        hook:
+          type: string
+          description: The Hook's name, on_reply.
+        chitt:
+          $ref: "#/components/schemas/ChittRef"
+        observer:
+          $ref: "#/components/schemas/Observer"
+          nullable: true
+        characterId:
+          type: string
+          description: The Character proposing the reply, which is the acting Character.
+        contentRaw:
+          type: string
+          description: The reply's text as typed.
+        contentQuirked:
+          type: string
+          description: The reply's text with the Character's quirks applied.
+        isOoc:
+          type: boolean
+          description: Whether the reply is out of character.
+        replyToPostId:
+          type: string
+          description: The Chitt replied to. Only direct replies reach the gate, so this is the Chitt.
+    ReactionGateInput:
+      description: Input to on_reaction, a gate for an added reaction, or a notification when added is false.
+      required:
+        - v
+        - hook
+        - chitt
+        - observer
+        - type
+        - added
+      properties:
+        v:
+          type: integer
+          format: int32
+          description: The ABI version. Always 1.
+        hook:
+          type: string
+          description: The Hook's name, on_reaction.
+        chitt:
+          $ref: "#/components/schemas/ChittRef"
+        observer:
+          $ref: "#/components/schemas/Observer"
+          nullable: true
+        type:
+          $ref: "#/components/schemas/ReactionType"
+        added:
+          type: boolean
+          description: True for an addition (a gate), false for a removal (a notification whose return is ignored).
+    RechittGateInput:
+      description: Input to on_rechitt, a gate for an added rechitt, or a notification when added is false.
+      required:
+        - v
+        - hook
+        - chitt
+        - observer
+        - added
+      properties:
+        v:
+          type: integer
+          format: int32
+          description: The ABI version. Always 1.
+        hook:
+          type: string
+          description: The Hook's name, on_rechitt.
+        chitt:
+          $ref: "#/components/schemas/ChittRef"
+        observer:
+          $ref: "#/components/schemas/Observer"
+          nullable: true
+        added:
+          type: boolean
+          description: True for an addition (a gate), false for a removal (a notification whose return is ignored).
+    # ---- Hook outputs -----------------------------------------------------------------------------------------
+    InitOutput:
+      description: Output of init. content becomes the Chitt's raw content, and publishing is refused without it.
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          description: The Chitt's text.
+        quirks:
+          type: boolean
+          description: Whether quirks apply to the text. Absent keeps the host default.
+        ooc:
+          type: boolean
+          description: Whether the text is out of character. Absent keeps the host default.
+        error:
+          $ref: "#/components/schemas/HookError"
+    RenderOutput:
+      description: Output of render. The template is a Cartridge template, and data is what it draws with.
+      required:
+        - template
+        - data
+      properties:
+        template:
+          type: string
+          description: The name of a template in the Cartridge.
+        data:
+          type: object
+          description: The values the template draws with. Any JSON object; the template reads it through Liquid.
+        canvas:
+          type: object
+          nullable: true
+          description: The Canvas Guest's state, sent to the canvas as its state on every render. JSON of at most 16 KiB. XTP has no untyped value, so this is typed as an object; the host accepts any JSON that fits.
+        error:
+          $ref: "#/components/schemas/HookError"
+    ControlOutput:
+      description: Output of on_control. The normal return is an empty object, which is represented here by the optional error alone.
+      required: []
+      properties:
+        error:
+          $ref: "#/components/schemas/HookError"
+    ViewOutput:
+      description: Output of on_view. The normal return is an empty object.
+      required: []
+      properties:
+        error:
+          $ref: "#/components/schemas/HookError"
+    TimerOutput:
+      description: Output of on_timer. The normal return is an empty object.
+      required: []
+      properties:
+        error:
+          $ref: "#/components/schemas/HookError"
+    MigrateOutput:
+      description: Output of migrate. The normal return is an empty object, which moves the storage over. An error keeps the old version and restores the storage.
+      required: []
+      properties:
+        error:
+          $ref: "#/components/schemas/HookError"
+    GateOutput:
+      description: The return of a gate (on_reply, on_reaction, on_rechitt). A missing allow means allow. To deny, return allow false with a message the composer shows; without a message it reads "This Chitt didn't accept that". Removals ignore the return.
+      required: []
+      properties:
+        allow:
+          type: boolean
+          description: False to refuse the action. Absent means allow.
+        message:
+          type: string
+          description: Plain text the composer shows beside the user's text when the action is refused. Cut to 200 characters.
+        error:
+          $ref: "#/components/schemas/HookError"
+    CanvasMessageOutput:
+      description: Output of on_canvas_message. The reply goes back only to the canvas that sent the message, and rerender draws its card again.
+      required: []
+      properties:
+        reply:
+          type: object
+          nullable: true
+          description: The answer, at most 4 KiB of JSON, sent as a reply event with the message's seq. XTP has no untyped value, so this is typed as an object; the host accepts any JSON that fits.
+        rerender:
+          type: boolean
+          description: True to draw the sender's card again through render, which delivers fresh canvas state.
+        error:
+          $ref: "#/components/schemas/HookError"
+    # ---- Host function errors ---------------------------------------------------------------------------------
+    AssetErrorCode:
+      description: Why asset could not return the file.
+      type: string
+      enum:
+        - not_found
+        - too_large
+        - invalid
+    AssetError:
+      description: A failed asset call.
+      required:
+        - code
+        - message
+      properties:
+        code:
+          $ref: "#/components/schemas/AssetErrorCode"
+        message:
+          type: string
+          description: Plain text explaining the failure.
+    KvErrorCode:
+      description: Why a KV or timer host function failed. Timers use the same codes.
+      type: string
+      enum:
+        - unavailable
+        - timeout
+        - quota_exceeded
+        - key_too_large
+        - value_too_large
+        - not_integer
+        - rate_limited
+        - invalid_argument
+    KvError:
+      description: A failed KV or timer call. Also the error field of the timer host functions.
+      required:
+        - code
+        - message
+      properties:
+        code:
+          $ref: "#/components/schemas/KvErrorCode"
+        message:
+          type: string
+          description: Plain text explaining the failure.
+    PosterErrorCode:
+      description: Why a Poster Action failed.
+      type: string
+      enum:
+        - forbidden
+        - not_found
+        - invalid
+        - denied
+        - rate_limited
+        - depth_exceeded
+        - unavailable
+    PosterError:
+      description: A failed Poster Action.
+      required:
+        - code
+        - message
+      properties:
+        code:
+          $ref: "#/components/schemas/PosterErrorCode"
+        message:
+          type: string
+          description: Plain text explaining the failure.
+    PushErrorCode:
+      description: Why push_render refused a push.
+      type: string
+      enum:
+        - not_allowed
+        - quota_exceeded
+        - invalid_argument
+        - rate_limited
+        - timeout
+    PushError:
+      description: A refused push_render call.
+      required:
+        - code
+        - message
+      properties:
+        code:
+          $ref: "#/components/schemas/PushErrorCode"
+        message:
+          type: string
+          description: Plain text explaining the refusal.
+    # ---- Asset ------------------------------------------------------------------------------------------------
+    AssetInput:
+      description: Input to asset. path is relative to assets/, such as "img/logo.png".
+      required:
+        - path
+      properties:
+        path:
+          type: string
+          description: The file's path under assets/.
+    AssetOutput:
+      description: Output of asset. bytes is the file, base64 encoded, and is absent on failure, when error is set.
+      required: []
+      properties:
+        bytes:
+          type: string
+          format: byte
+          description: The file's bytes, base64 encoded. At most 4 MiB before encoding.
+        error:
+          $ref: "#/components/schemas/AssetError"
+    # ---- KV ---------------------------------------------------------------------------------------------------
+    KvKeyInput:
+      description: A key, for kv_get and kv_delete. Keys are UTF-8 strings of at most 1 KiB.
+      required:
+        - key
+      properties:
+        key:
+          type: string
+          description: The key, a UTF-8 string of at most 1 KiB.
+    KvGetOutput:
+      description: Output of kv_get. value is null for a missing key.
+      required: []
+      properties:
+        value:
+          type: string
+          format: byte
+          nullable: true
+          description: The value, base64 encoded, or null when the key is absent.
+        ttlSeconds:
+          type: integer
+          format: int32
+          nullable: true
+          description: Seconds until the key expires, or null when it has no expiry.
+        error:
+          $ref: "#/components/schemas/KvError"
+    KvSetInput:
+      description: Input to kv_set and kv_set_if_absent.
+      required:
+        - key
+        - value
+      properties:
+        key:
+          type: string
+          description: The key, a UTF-8 string of at most 1 KiB.
+        value:
+          type: string
+          format: byte
+          description: The value, base64 encoded, at most 1 MiB decoded.
+        ttlSeconds:
+          type: integer
+          format: int32
+          nullable: true
+          description: Seconds until the key expires. Absent or null keeps the existing expiry for kv_set and means none for a new key.
+    KvSetOutput:
+      description: Output of kv_set.
+      required: []
+      properties:
+        error:
+          $ref: "#/components/schemas/KvError"
+    KvSetIfAbsentOutput:
+      description: Output of kv_set_if_absent. set is false when the key already existed, which is not an error.
+      required: []
+      properties:
+        set:
+          type: boolean
+          description: Whether the value was written.
+        error:
+          $ref: "#/components/schemas/KvError"
+    KvCompareAndSwapInput:
+      description: Input to kv_compare_and_swap.
+      required:
+        - key
+        - expected
+        - value
+      properties:
+        key:
+          type: string
+          description: The key, a UTF-8 string of at most 1 KiB.
+        expected:
+          type: string
+          format: byte
+          nullable: true
+          description: The value the key must hold, base64 encoded, or null for "must be absent".
+        value:
+          type: string
+          format: byte
+          description: The value to write, base64 encoded.
+    KvSwapOutput:
+      description: Output of kv_compare_and_swap. swapped is false when the current value was not expected, which is not an error.
+      required: []
+      properties:
+        swapped:
+          type: boolean
+          description: Whether the value was written.
+        error:
+          $ref: "#/components/schemas/KvError"
+    KvDeleteOutput:
+      description: Output of kv_delete.
+      required: []
+      properties:
+        deleted:
+          type: boolean
+          description: Whether a key was deleted.
+        error:
+          $ref: "#/components/schemas/KvError"
+    KvIncrInput:
+      description: Input to kv_incr. A counter that does not exist starts at 0.
+      required:
+        - key
+      properties:
+        key:
+          type: string
+          description: The key, a UTF-8 string of at most 1 KiB.
+        by:
+          type: integer
+          format: int64
+          description: The amount to add. Absent adds 1. Must be a safe integer (within 2^53 in magnitude) because the host reads JSON numbers.
+        ttlSeconds:
+          type: integer
+          format: int32
+          nullable: true
+          description: Seconds until the key expires. Absent or null keeps the existing expiry.
+    KvIncrOutput:
+      description: Output of kv_incr, the counter after the add.
+      required: []
+      properties:
+        value:
+          type: integer
+          format: int64
+          description: The counter's value after the add.
+        error:
+          $ref: "#/components/schemas/KvError"
+    KvListInput:
+      description: Input to kv_list.
+      required:
+        - prefix
+      properties:
+        prefix:
+          type: string
+          description: Lists the keys that start with this prefix. An empty prefix lists every key, up to 1000.
+    KvListOutput:
+      description: Output of kv_list.
+      required: []
+      properties:
+        keys:
+          type: array
+          description: The matching keys, at most 1000 of them.
+          items:
+            type: string
+        truncated:
+          type: boolean
+          description: True when more keys matched than were returned.
+        error:
+          $ref: "#/components/schemas/KvError"
+    KvMgetInput:
+      description: Input to kv_mget. At most 1000 keys, and at most 4 MiB of values in the reply.
+      required:
+        - keys
+      properties:
+        keys:
+          type: array
+          description: The keys to read.
+          items:
+            type: string
+    KvMgetEntry:
+      description: One key of a kv_mget reply, with its value or null when the key is absent.
+      required:
+        - key
+        - value
+      properties:
+        key:
+          type: string
+          description: The requested key.
+        value:
+          type: string
+          format: byte
+          nullable: true
+          description: The value, base64 encoded, or null when the key has no live value.
+    KvMgetOutput:
+      description: Output of kv_mget. One entry per requested key, in the order requested.
+      required: []
+      properties:
+        entries:
+          type: array
+          description: One entry per requested key, in the order requested.
+          items:
+            $ref: "#/components/schemas/KvMgetEntry"
+        error:
+          $ref: "#/components/schemas/KvError"
+    KvEntry:
+      description: One entry of the Chitt's KV store, as kv_get_all returns it.
+      required:
+        - key
+        - value
+      properties:
+        key:
+          type: string
+          description: The key, a UTF-8 string of at most 1 KiB.
+        value:
+          type: string
+          format: byte
+          description: The value, base64 encoded, at most 1 MiB decoded.
+    KvGetAllOutput:
+      description: Output of kv_get_all. truncated is true past 1000 entries or 4 MiB of values.
+      required: []
+      properties:
+        entries:
+          type: array
+          description: Every entry of the Chitt's store, at most 1000 of them.
+          items:
+            $ref: "#/components/schemas/KvEntry"
+        truncated:
+          type: boolean
+          description: True when the store holds more than the reply returns.
+        error:
+          $ref: "#/components/schemas/KvError"
+    # ---- Timers -----------------------------------------------------------------------------------------------
+    ScheduleTimerInput:
+      description: Input to schedule_timer. A Chitt holds at most 100 timers outstanding.
+      required:
+        - name
+        - delaySeconds
+      properties:
+        name:
+          type: string
+          description: The timer's name, at most 256 bytes. Scheduling an existing name replaces that timer.
+        delaySeconds:
+          type: integer
+          format: int32
+          description: Seconds until the timer fires, from 10 to 2,592,000 (30 days).
+        payload:
+          type: object
+          nullable: true
+          description: Returned as payload in on_timer. Any JSON of at most 16 KiB; typed as an object because XTP has no untyped value.
+    ScheduleTimerOutput:
+      description: Output of schedule_timer.
+      required: []
+      properties:
+        error:
+          $ref: "#/components/schemas/KvError"
+    CancelTimerInput:
+      description: Input to cancel_timer.
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: The timer's name.
+    CancelTimerOutput:
+      description: Output of cancel_timer.
+      required: []
+      properties:
+        cancelled:
+          type: boolean
+          description: Whether a timer of that name was outstanding.
+        error:
+          $ref: "#/components/schemas/KvError"
+    # ---- Render Pushes ----------------------------------------------------------------------------------------
+    PushRenderInput:
+      description: Input to push_render. Absent characterId pushes to every Observer of the Chitt; a characterId pushes to that Character only. A Hook call may queue at most 20 distinct targets.
+      required: []
+      properties:
+        characterId:
+          type: string
+          description: The one Observer to push to, by Character id. Absent or null means every Observer.
+    PushRenderOutput:
+      description: Output of push_render.
+      required: []
+      properties:
+        error:
+          $ref: "#/components/schemas/PushError"
+    # ---- Poster Actions ---------------------------------------------------------------------------------------
+    PostIdInput:
+      description: Input naming one Chitt, for delete_chitt, rechitt and unrechitt.
+      required:
+        - postId
+      properties:
+        postId:
+          type: string
+          description: The Chitt's id.
+    PostReplyInput:
+      description: Input to post_reply.
+      required:
+        - postId
+        - content
+      properties:
+        postId:
+          type: string
+          description: The Chitt to reply to.
+        content:
+          type: string
+          description: The reply's text.
+        ooc:
+          type: boolean
+          description: Whether the reply is out of character. Absent means false.
+    PostChittInput:
+      description: Input to post_chitt.
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          description: The Chitt's text.
+        ooc:
+          type: boolean
+          description: Whether the Chitt is out of character. Absent means false.
+    EditChittInput:
+      description: Input to edit_chitt. Without postId it edits the Chitt itself, where quirks apply only when quirks is true.
+      required:
+        - content
+      properties:
+        postId:
+          type: string
+          description: The Chitt to edit. Absent or null means the Chitt itself.
+        content:
+          type: string
+          description: The new text.
+        quirks:
+          type: boolean
+          description: Whether quirks apply. Absent means the host's default for the target.
+        ooc:
+          type: boolean
+          description: Whether the Chitt is out of character. Absent means false.
+    ReactInput:
+      description: Input to react and unreact.
+      required:
+        - postId
+        - type
+      properties:
+        postId:
+          type: string
+          description: The Chitt to react to.
+        type:
+          $ref: "#/components/schemas/ReactionType"
+    FollowInput:
+      description: Input to follow and unfollow.
+      required:
+        - characterId
+      properties:
+        characterId:
+          type: string
+          description: The Character to follow or unfollow.
+    PinInput:
+      description: Input to pin. The type says whether a Chitt or a rechitt is pinned; absent means a post.
+      required:
+        - postId
+      properties:
+        postId:
+          type: string
+          description: The Chitt to pin.
+        type:
+          $ref: "#/components/schemas/PinType"
+    PosterActionOutput:
+      description: 'Output of a Poster Action with no result fields. Success is { ok: true }, or { ok: true, deferred: true } inside init and gates. A failure is the error field.'
+      required: []
+      properties:
+        ok:
+          type: boolean
+          description: True on success. Absent on failure.
+        deferred:
+          type: boolean
+          description: True when the action was queued to run after the calling Hook commits.
+        error:
+          $ref: "#/components/schemas/PosterError"
+    PostIdOutput:
+      description: 'Output of post_reply and post_chitt: the new Chitt''s id.'
+      required: []
+      properties:
+        ok:
+          type: boolean
+          description: True on success. Absent on failure.
+        deferred:
+          type: boolean
+          description: True when the action was queued to run after the calling Hook commits.
+        postId:
+          type: string
+          description: The new Chitt's id. Absent when deferred.
+        error:
+          $ref: "#/components/schemas/PosterError"
+    ReactOutput:
+      description: Output of react and unreact, with the Chitt's reaction counts after the change.
+      required: []
+      properties:
+        ok:
+          type: boolean
+          description: True on success. Absent on failure.
+        deferred:
+          type: boolean
+          description: True when the action was queued to run after the calling Hook commits.
+        action:
+          type: string
+          description: What the change did, such as added or removed.
+        likeCount:
+          type: integer
+          format: int32
+          description: The Chitt's like count after the change.
+        hateCount:
+          type: integer
+          format: int32
+          description: The Chitt's hate count after the change.
+        pityCount:
+          type: integer
+          format: int32
+          description: The Chitt's pity count after the change.
+        mediateCount:
+          type: integer
+          format: int32
+          description: The Chitt's mediate count after the change.
+        error:
+          $ref: "#/components/schemas/PosterError"
+    RechittOutput:
+      description: Output of rechitt.
+      required: []
+      properties:
+        ok:
+          type: boolean
+          description: True on success. Absent on failure.
+        deferred:
+          type: boolean
+          description: True when the action was queued to run after the calling Hook commits.
+        rechittId:
+          type: string
+          nullable: true
+          description: The new rechitt's id, or null when deferred.
+        error:
+          $ref: "#/components/schemas/PosterError"
+    FollowOutput:
+      description: Output of follow and unfollow.
+      required: []
+      properties:
+        ok:
+          type: boolean
+          description: True on success. Absent on failure.
+        deferred:
+          type: boolean
+          description: True when the action was queued to run after the calling Hook commits.
+        action:
+          type: string
+          description: What the change did, such as added or removed.
+        error:
+          $ref: "#/components/schemas/PosterError"
+    # ---- Moderation (admin Poster Actions) -------------------------------------------------
+    AdminEditPostInput:
+      description: "Input to admin_edit_post."
+      required:
+        - postId
+        - content
+      properties:
+        postId:
+          type: string
+          description: "The Chitt to edit."
+        content:
+          type: string
+          description: "The new text."
+    BanUserInput:
+      description: "Input to ban_user."
+      required:
+        - userId
+        - duration
+      properties:
+        userId:
+          type: string
+          description: "The user to ban."
+        duration:
+          type: string
+          description: "How long it lasts: one of 1m, 5m, 15m, 30m, 1h, 24h, 7d, 30d or permanent. XTP cannot enumerate these as identifiers, so the host checks the value."
+        reason:
+          type: string
+          description: "Why the user is banned, shown in the moderation log."
+    UserIdInput:
+      description: "Input naming one user."
+      required:
+        - userId
+      properties:
+        userId:
+          type: string
+          description: "The user's id."
+    SuspendCharacterInput:
+      description: "Input to suspend_character."
+      required:
+        - characterId
+        - duration
+      properties:
+        characterId:
+          type: string
+          description: "The Character to suspend."
+        duration:
+          type: string
+          description: "How long it lasts: one of 1m, 5m, 15m, 30m, 1h, 24h, 7d, 30d or permanent. XTP cannot enumerate these as identifiers, so the host checks the value."
+        reason:
+          type: string
+          description: "Why the Character is suspended, shown in the moderation log."
+    CharacterIdInput:
+      description: "Input naming one Character."
+      required:
+        - characterId
+      properties:
+        characterId:
+          type: string
+          description: "The Character's id."
+    AdminUpdateTrolltagInput:
+      description: "Input to admin_update_trolltag."
+      required:
+        - characterId
+        - trolltag
+      properties:
+        characterId:
+          type: string
+          description: "The Character to change."
+        trolltag:
+          type: string
+          description: "The new trolltag."
+    AdminUpdateNameInput:
+      description: "Input to admin_update_character_name."
+      required:
+        - characterId
+        - name
+      properties:
+        characterId:
+          type: string
+          description: "The Character to change."
+        name:
+          type: string
+          description: "The new name."
+    AdminUpdateBioInput:
+      description: "Input to admin_update_character_bio."
+      required:
+        - characterId
+        - bio
+      properties:
+        characterId:
+          type: string
+          description: "The Character to change."
+        bio:
+          type: string
+          description: "The new bio."
+    AdminUpdateDiscriminatorInput:
+      description: "Input to admin_update_character_discriminator."
+      required:
+        - characterId
+        - discriminator
+      properties:
+        characterId:
+          type: string
+          description: "The Character to change."
+        discriminator:
+          type: string
+          description: "The new discriminator."
+    CreateBadgeInput:
+      description: "Input to create_badge."
+      required:
+        - name
+        - description
+        - imageDataUri
+      properties:
+        name:
+          type: string
+          description: "The badge's name."
+        description:
+          type: string
+          description: "What the badge means."
+        imageDataUri:
+          type: string
+          description: "The badge's image, as a data URI."
+    BadgeIdInput:
+      description: "Input naming one badge."
+      required:
+        - badgeId
+      properties:
+        badgeId:
+          type: string
+          description: "The badge's id."
+    UserBadgeInput:
+      description: "Input to grant or revoke a badge on a user."
+      required:
+        - userId
+        - badgeId
+      properties:
+        userId:
+          type: string
+          description: "The user."
+        badgeId:
+          type: string
+          description: "The badge."
+    CharacterBadgeInput:
+      description: "Input to grant or revoke a badge on a Character."
+      required:
+        - characterId
+        - badgeId
+      properties:
+        characterId:
+          type: string
+          description: "The Character."
+        badgeId:
+          type: string
+          description: "The badge."

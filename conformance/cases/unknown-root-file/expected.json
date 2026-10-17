@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "notes.txt: is not an allowed file; Cartridges may contain only manifest.json, server.wasm, canvas.wasm, templates/*.liquid and assets/**"
+}

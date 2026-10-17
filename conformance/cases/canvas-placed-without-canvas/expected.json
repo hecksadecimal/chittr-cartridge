@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "templates/card.liquid: places <lc-canvas> but the Cartridge has no canvas.wasm"
+}

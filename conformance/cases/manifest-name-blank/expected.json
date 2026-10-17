@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: \"name\" must not be empty"
+}

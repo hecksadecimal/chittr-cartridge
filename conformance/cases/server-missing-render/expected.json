@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "server.wasm: must export the \"render\" Hook"
+}

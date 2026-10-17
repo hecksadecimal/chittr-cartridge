@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "canvas.wasm: the module's memory maximum is 1025 pages (64.0625 MiB); the cap is 1024 pages"
+}

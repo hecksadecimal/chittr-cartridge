@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: font name \"1Mono\" must start with a letter and use only letters, digits, \"-\" or \"_\" (at most 32 characters)"
+}

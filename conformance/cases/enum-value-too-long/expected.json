@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: Control \"vote\" enum values must be strings of 1 to 64 characters"
+}

@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: is 16438 bytes; the limit is 16384"
+}

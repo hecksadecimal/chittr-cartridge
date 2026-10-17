@@ -1,0 +1,182 @@
+# chittr-cartridge
+
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+hiii, mocáli here. this is the repo for making cartridges, the little programs behind a chitt. the cli, the sdk, the
+docs, the examples. poke around c;
+-----BEGIN PGP SIGNATURE-----
+
+iQEzBAEBCgAdFiEEc2hpdHR5IGZha2Ugc2lnbmF0dXJlIGJ1dCBpdHMgdmliZXM=
+-----END PGP SIGNATURE-----
+
+everything u need to build a cartridge for Chittr with rust alone: the rust sdk, the v1 abi docs and schemas, a cli to
+make and check them, and runnable examples. no node, no fuss.
+
+## What a Cartridge is
+
+a cartridge is the code and content behind a chitt. it has up to two parts, both compiled to WebAssembly:
+
+- a **Server Guest** that runs on the server. it has **Hooks** that Chittr calls when something happens to its chitt: a
+  view, a **Control** being used, a reply, a reaction, a timer firing. it can keep its own key-value store, schedule timers,
+  act as the chitt's posting character through **Poster Actions**, and tell viewers that its card has changed with
+  **Render Pushes**.
+- an optional **Canvas Guest** that runs in the viewer's browser. it draws a canvas and handles its input, and talks to the
+  Server Guest only through messages.
+
+alongside the guests, a cartridge has a `manifest.json` (its name, fonts and Controls), a card template written in Liquid
+(the `templates/` folder) that places the **Host Parts** the host owns, like the author header and the reply and reaction
+bars, and any `assets/` the guests load.
+
+a Server Guest's `render` returns the data for the card, and the template draws it. `render` gets the **Observer** (the
+viewer, or none when logged out), so each viewer can get their own card.
+
+## Install
+
+1. Install Rust with [rustup](https://rustup.rs), then add the WebAssembly target:
+
+   ```bash
+   rustup target add wasm32-unknown-unknown
+   ```
+
+2. Install the `chittr-cartridge` CLI. it creates, checks, packs and watches cartridges. grab a prebuilt zip (below), or
+   build it from source:
+
+   ```bash
+   cargo install --git https://github.com/hecksadecimal/chittr-cartridge chittr-cartridge --locked
+   ```
+
+3. Optional: install the XTP CLI (`xtp`) as its documentation describes. it generates the Rust bindings from the schemas
+   in `docs/cartridges/v1/`. the CLI's `sync` command copies those bindings into a project, pruned. the examples already
+   have their generated bindings, so u only need `xtp` to change a schema.
+
+no Node.js needed.
+
+### Install from a release zip
+
+every release has one zip per platform, plus a `SHA256SUMS` file. the platforms are `x86_64-unknown-linux-gnu`,
+`aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin` and `x86_64-pc-windows-msvc`. grab the zip for
+yours, check it against the sums, unzip it, and put the binary on your `PATH`:
+
+```bash
+ZIP=chittr-cartridge-X.Y.Z-aarch64-apple-darwin.zip
+BASE=https://github.com/hecksadecimal/chittr-cartridge/releases/download/vX.Y.Z
+curl -LO "$BASE/$ZIP" -LO "$BASE/SHA256SUMS"
+grep " $ZIP\$" SHA256SUMS | shasum -a 256 -c -      # on linux, use sha256sum -c -
+unzip "$ZIP"
+mv "${ZIP%.zip}/chittr-cartridge" ~/.local/bin/       # any folder on your PATH
+chittr-cartridge --help
+```
+
+the zip unpacks into a folder of the same name. it holds the binary, the README, both licenses, the v1 docs and schemas,
+and the examples' sources. on Windows the binary is `chittr-cartridge.exe`, and `Get-FileHash` checks it against
+`SHA256SUMS`.
+
+## Start a Cartridge
+
+```bash
+chittr-cartridge new my-cartridge            # or: new my-cartridge --canvas, for a Canvas Guest too
+cd my-cartridge && ./build.sh && chittr-cartridge check cartridge
+```
+
+the new project builds and checks with no edits. [`docs/cartridges/v1/quickstart.md`](docs/cartridges/v1/quickstart.md)
+walks u thru it.
+
+## Build the examples
+
+```bash
+cargo build                       # the SDK and its macros
+cargo test --workspace --all-features
+sh scripts/build-examples.sh      # every example's Server Guest and Canvas Guest, as wasm
+```
+
+the build script writes `server.wasm` and `canvas.wasm` into each example's `cartridge/` folder. if cargo's build
+scripts fail to link on macOS, see [Troubleshooting](#troubleshooting).
+
+the examples:
+
+| Example | What it shows |
+| --- | --- |
+| `examples/hello` | The smallest Server Guest: `init` and `render`, no Canvas Guest. |
+| `examples/poll` | A poll with a Control, a Canvas Guest bar chart, a gate on replies, and a timer. The reference for scaffolding. |
+| `examples/snake` | A playable Snake game in a Canvas Guest, with a leaderboard in the Server Guest. |
+| `examples/paint` | A shared pixel canvas, stored in the Server Guest's KV store and pushed to viewers. |
+
+## The CLI
+
+```
+chittr-cartridge new <name> [--canvas] [--sdk-path DIR]   create a Cartridge project
+chittr-cartridge check <dir|file.cartridge>               validate with the server's rules
+chittr-cartridge pack <dir> [out]                         pack and validate a .cartridge
+chittr-cartridge watch <dir>                              repack and check on every save (no upload)
+chittr-cartridge sync <scaffold-dir> <project>            copy xtp's bindings in, pruned to the Hooks you define
+```
+
+`check` prints `file: rule` for each rule the archive breaks, and exits 1. `pack` writes `<project>/<project>.cartridge` when
+the directory is called `cartridge`, and refuses to write an archive that fails `check`. the validator follows the server's
+rules, and the server's parser stays the authority at upload. the [conformance corpus](conformance/README.md) holds the cases
+the validator is tested against.
+
+## Test on Chittr
+
+1. Open the composer on Chittr and upload the `.cartridge` file, with **Publish as preview** on. a preview is visible only to
+   u and any Testers u add, and its cartridge runs for real.
+2. Open the chitt, and use **Replace** in the **Cartridge…** panel to upload a new version. each replacement makes a new
+   Cartridge Version, and earlier versions can be rolled back to.
+
+to iterate, rebuild, repack and replace. or run `chittr-cartridge watch cartridge` and let it repack on every save.
+
+## Troubleshooting
+
+**cargo's build scripts fail to link on macOS.** some macOS setups point the build at the newest SDK, and the linker can't
+read it. if you see `tapi error: malformed file`, set `SDKROOT` to an older SDK. list the ones you have, then pick one:
+
+```bash
+ls /Library/Developer/CommandLineTools/SDKs
+SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX<version>.sdk cargo build
+```
+
+don't use `xcrun --show-sdk-path` for this, cause it prints the default SDK, which can be the broken one. the build scripts
+(`scripts/build-examples.sh` and a new project's `build.sh`) never pick an SDK themselves, so `SDKROOT` goes in your
+environment and cargo sees it.
+
+## Releases
+
+a release is cut by pushing a `vX.Y.Z` tag:
+
+```bash
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+the release workflow (`.github/workflows/release.yml`) builds the CLI in release mode for the five targets above, zips
+each one, and creates a GitHub release for the tag with the zips and `SHA256SUMS` attached. the release notes are the
+commit subjects since the previous tag. every push to `main` and every pull request runs the CI workflow
+(`.github/workflows/ci.yml`): fmt, clippy, the tests with the conformance corpus, every example built to wasm, and
+`chittr-cartridge check` on each example.
+
+## Documentation
+
+- [`docs/cartridges/v1/quickstart.md`](docs/cartridges/v1/quickstart.md): from an empty folder to a packed Cartridge.
+- [`docs/cartridges/v1/abi.md`](docs/cartridges/v1/abi.md): the ABI, with every export, host function, draw op and limit.
+- [`docs/cartridges/v1/design.md`](docs/cartridges/v1/design.md): why the ABI is shaped the way it is.
+- [`docs/cartridges/v1/server.xtp.yaml`](docs/cartridges/v1/server.xtp.yaml) and
+  [`docs/cartridges/v1/canvas.xtp.yaml`](docs/cartridges/v1/canvas.xtp.yaml): the schemas the ABI is defined by.
+
+## Layout
+
+```
+cli/                          the chittr-cartridge CLI, with its starter templates and tests
+conformance/                  the conformance corpus the CLI's validator is tested against
+sdk/chittr-cartridge          the guest SDK (Server Guests, and Canvas Guests with the `canvas` feature)
+sdk/chittr-cartridge-macros   the #[hook] attribute
+docs/cartridges/v1            the ABI, quickstart, design notes and schemas
+examples/                     hello, poll, snake and paint
+scripts/build-examples.sh     builds every example to wasm
+scripts/package-release.sh    packages one release zip of the CLI
+.github/workflows             the CI and release workflows
+```
+
+## License
+
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT), at your option.

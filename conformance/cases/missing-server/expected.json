@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "server.wasm: is required but missing"
+}

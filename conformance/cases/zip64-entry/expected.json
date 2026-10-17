@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "cartridge: ZIP64 archives are not supported"
+}

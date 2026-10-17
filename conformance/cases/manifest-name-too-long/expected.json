@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: \"name\" is longer than 80 characters"
+}

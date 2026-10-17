@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: is encrypted; encrypted entries are not supported"
+}

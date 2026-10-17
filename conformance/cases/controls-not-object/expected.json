@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "manifest.json: \"controls\" must be an object mapping Control names to declarations"
+}

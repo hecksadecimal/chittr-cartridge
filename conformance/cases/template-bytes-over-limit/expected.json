@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "error": "cartridge: templates are 54 bytes; the limit is 4",
+  "limits": {
+    "templateBytes": 4
+  }
+}
