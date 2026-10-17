@@ -1,6 +1,7 @@
 # __NAME__
 
-A Cartridge for Chittr. The Server Guest is `src/lib.rs`: its `render` Hook returns the data the card draws, and
+A Cartridge for Chittr. The Server Guest is `src/lib.rs`: its `init` Hook gives the Chitt its text when it's published
+(Chittr refuses to publish without one), and its `render` Hook returns the data the card draws, and
 `cartridge/templates/card.liquid` draws it.
 
 __CANVAS_README__## Build and check

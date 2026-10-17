@@ -50,6 +50,8 @@ jobs:
         run: rustup target add wasm32-unknown-unknown
       - name: Build every example to wasm
         run: sh scripts/build-examples.sh
+      - name: Test the examples' Hooks natively
+        run: cargo test --manifest-path examples/poll/Cargo.toml
       - name: Build the CLI
         run: cargo build --release -p chittr-cartridge
       - name: Check every example's Cartridge

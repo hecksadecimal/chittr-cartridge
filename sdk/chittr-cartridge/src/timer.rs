@@ -9,19 +9,10 @@
 //! Failures use the KV error codes (see `kv`): `invalid_argument`, `quota_exceeded`, `unavailable`,
 //! `timeout`, `rate_limited`. The codes are reported as `TimerError`, the same type as `KvError`.
 
+use crate::ffi;
 use crate::kv::{call, flag};
 use serde::Serialize;
 use serde_json::json;
-
-mod imports {
-    use extism_pdk::host_fn;
-
-    #[host_fn]
-    extern "ExtismHost" {
-        pub fn schedule_timer(request: String) -> String;
-        pub fn cancel_timer(request: String) -> String;
-    }
-}
 
 pub use crate::kv::{KvError as TimerError, KvResult as TimerResult};
 
@@ -33,12 +24,12 @@ pub fn schedule_timer(name: &str, delay_seconds: u64, payload: impl Serialize) -
         message: error.to_string(),
     })?;
     let request = json!({ "name": name, "delaySeconds": delay_seconds, "payload": payload });
-    call(unsafe { imports::schedule_timer(request.to_string()) })?;
+    call(unsafe { ffi::schedule_timer(request.to_string()) })?;
     Ok(())
 }
 
 /// Cancels the timer named `name`. Returns whether one was outstanding.
 pub fn cancel_timer(name: &str) -> TimerResult<bool> {
-    let reply = call(unsafe { imports::cancel_timer(json!({ "name": name }).to_string()) })?;
+    let reply = call(unsafe { ffi::cancel_timer(json!({ "name": name }).to_string()) })?;
     flag(&reply, "cancelled")
 }

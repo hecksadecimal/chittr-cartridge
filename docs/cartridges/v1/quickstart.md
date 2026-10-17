@@ -37,8 +37,8 @@ chittr-cartridge new my-cartridge --canvas   # a Server Guest and a Canvas Guest
 cd my-cartridge
 ```
 
-`new` writes this layout. `src/pdk.rs` is already pruned to the one Hook the starter defines, so the project builds and
-checks with no edits:
+`new` writes this layout. `src/pdk.rs` is already pruned to the two Hooks the starter defines (`init` and `render`), so the project
+builds and checks with no edits:
 
 ```
 my-cartridge/
@@ -57,9 +57,15 @@ my-cartridge/
 the starter `render` returns the data the card draws. `render` gets the Observer (the viewer, or none when logged out), so
 each viewer can get their own card. it runs on every view, under a 500 ms deadline.
 
-a Server Guest must define `render`, the one Hook every Server Guest has. a Canvas Guest must define `start` and `frame`, and
+a Server Guest must define `render`, the one Hook the format requires. a Canvas Guest must define `start` and `frame`, and
 `event` is optional. implement the other Hooks in `src/lib.rs` as u need them, then run `chittr-cartridge sync` (see below) so
 their wrappers show up in `src/pdk.rs`.
+
+the starter also has an `init`, and u'll want to keep it. Chittr calls `init` once, when the chitt is published, and takes the
+chitt's text from its `content`. it refuses to publish a Cartridge without one. `check` and `pack` warn about a missing `init`
+(`warning: server.wasm: no init Hook — Chittr refuses to publish without one (it supplies the Chitt's text)`), and they still
+pass, since the format itself only asks for `render`. `sync` keeps the `init` wrapper in `src/pdk.rs` for as long as
+`src/lib.rs` defines `init`, so keep the Hook there.
 
 ## 2. Write the Hooks
 
@@ -129,6 +135,9 @@ chittr-cartridge pack cartridge     # writes my-cartridge.cartridge, validated
 directory or a `.cartridge` file. `pack` writes `my-cartridge.cartridge` into the project, next to `cartridge/`, and refuses
 to write an archive that doesn't validate. pass a path as the second argument to put it somewhere else.
 
+if `check` prints a warning, read it before u upload. a warning doesn't stop the upload, but a missing `init` does stop the
+publish.
+
 to iterate, run `chittr-cartridge watch cartridge` in a second terminal. it repacks and checks on every save. nothing gets
 uploaded: upload the `.cartridge` yourself, through the composer.
 
@@ -139,6 +148,29 @@ and its cartridge runs for real. open the chitt and use **Replace** in the **Car
 replacement makes a new Cartridge Version, and earlier versions can be rolled back to.
 
 an upload that breaks a rule gets refused with the rule that failed, which is the same text `check` printed.
+
+## 6. Test the Hooks natively
+
+the SDK's `testing` feature runs a Server Guest's Hooks under `cargo test`, against a fake host that keeps the Chittr host's
+rules. add it as a dev-dependency, next to the one the starter already has:
+
+```toml
+[dev-dependencies]
+chittr-cartridge = { package = "chittr-cartridge-sdk", git = "https://github.com/hecksadecimal/chittr-cartridge", features = ["testing"] }
+```
+
+then a test hands a Hook an envelope and checks what it did to the host:
+
+```rust
+let host = TestHost::new();
+let chitt = testing::chitt("chitt-1", "poster-1");
+let output = my_cartridge::init(testing::init(&chitt));
+assert!(!output.content.is_empty());
+assert_eq!(host.timers().len(), 1);
+```
+
+the [guide's testing section](guide.md#testing) lists everything the fake host records and fakes, and what it doesn't model.
+the poll's `examples/poll/src/tests.rs` is a full suite.
 
 ## Regenerating the bindings when the schema changes
 
@@ -164,3 +196,7 @@ README says what it does. use the SDK's error types for failures, and check the 
 
 the examples are the reference. each one builds to wasm with `sh scripts/build-examples.sh`, so start from a working example and
 change it.
+
+for the rest, the [guide](guide.md) covers each SDK piece, the [limits](limits.md) page has every number an author runs into, and
+the [cookbook](cookbook.md) has recipes for the common shapes: polls, counters, timers that close things, canvas games, logged-out
+Observers, and the Preview and Tester workflow on Chittr.

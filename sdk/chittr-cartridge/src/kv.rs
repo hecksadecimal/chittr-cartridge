@@ -17,24 +17,14 @@
 //! `list` and `get_all` return at most 1,000 entries and say so with `truncated`.
 //! `by` in `incr` must be within 2^53 in magnitude, since the JSON reader on the host is a JS number.
 
+use crate::ffi::{
+    kv_compare_and_swap, kv_delete, kv_get, kv_get_all, kv_incr, kv_list, kv_mget, kv_set,
+    kv_set_if_absent,
+};
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
-use extism_pdk::host_fn;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
-
-#[host_fn]
-extern "ExtismHost" {
-    fn kv_get(request: String) -> String;
-    fn kv_set(request: String) -> String;
-    fn kv_set_if_absent(request: String) -> String;
-    fn kv_compare_and_swap(request: String) -> String;
-    fn kv_delete(request: String) -> String;
-    fn kv_incr(request: String) -> String;
-    fn kv_list(request: String) -> String;
-    fn kv_mget(request: String) -> String;
-    fn kv_get_all(request: String) -> String;
-}
 
 /// A KV failure. `code` is one of the codes in the module docs.
 #[derive(Debug, Clone, PartialEq, Eq)]

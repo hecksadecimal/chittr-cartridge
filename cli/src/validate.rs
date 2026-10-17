@@ -22,7 +22,12 @@ pub struct Cartridge {
     pub assets: Vec<String>,
     /// The Hooks the Server Guest exports, in export order.
     pub hooks: Vec<String>,
+    /// Problems that don't stop an upload, in the order they were found. A Cartridge with warnings still validates.
+    pub warnings: Vec<String>,
 }
+
+/// The warning for a Server Guest with no `init` Hook. Publishing needs one: Chittr calls `init` to get the Chitt's text.
+pub const NO_INIT_WARNING: &str = "server.wasm: no init Hook — Chittr refuses to publish without one (it supplies the Chitt's text)";
 
 /// Validates a `.cartridge` archive with the server's default limits.
 pub fn validate(bytes: &[u8]) -> Result<Cartridge> {
@@ -54,6 +59,10 @@ pub fn validate_with(bytes: &[u8], limits: &Limits) -> Result<Cartridge> {
     let manifest = manifest::parse(manifest_bytes, &asset_names)?;
     let server_wasm = required(&contents, "server.wasm")?;
     let hooks = wasm::check_server(server_wasm)?;
+    let mut warnings = Vec::new();
+    if !hooks.iter().any(|name| name == "init") {
+        warnings.push(NO_INIT_WARNING.to_string());
+    }
     let canvas_wasm = contents.get("canvas.wasm");
     if let Some(canvas) = canvas_wasm {
         wasm::check_canvas(canvas)?;
@@ -74,6 +83,7 @@ pub fn validate_with(bytes: &[u8], limits: &Limits) -> Result<Cartridge> {
         templates,
         assets,
         hooks,
+        warnings,
     })
 }
 

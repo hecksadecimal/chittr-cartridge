@@ -50,6 +50,17 @@ mod exports {
     use super::*;
 
     #[no_mangle]
+    pub extern "C" fn init() -> i32 {
+        let ret =
+            crate::init(try_input_json!()).and_then(|x| extism_pdk::output(extism_pdk::Json(x)));
+
+        match ret {
+            Ok(()) => 0,
+            Err(e) => internal::return_error(e),
+        }
+    }
+
+    #[no_mangle]
     pub extern "C" fn render() -> i32 {
         let ret =
             crate::render(try_input_json!()).and_then(|x| extism_pdk::output(extism_pdk::Json(x)));

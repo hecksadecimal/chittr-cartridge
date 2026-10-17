@@ -4,19 +4,11 @@
 //! one JSON object and returns one: `{ "bytes": "<base64>" }` on success, or `{ "error": { code, message } }` (codes
 //! `not_found`, `too_large` (over 4 MiB) and `invalid`). The SDK decodes the bytes before it returns them.
 
+use crate::ffi;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use serde::Deserialize;
 use serde_json::json;
-
-mod imports {
-    use extism_pdk::host_fn;
-
-    #[host_fn]
-    extern "ExtismHost" {
-        pub fn asset(request: String) -> String;
-    }
-}
 
 /// A failed `asset(path)` call. `code` is the host's code, such as `not_found`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -45,7 +37,7 @@ struct AssetReply {
 /// Reads one Cartridge Asset by its path relative to `assets/`, e.g. `"img/logo.png"`.
 pub fn asset(path: &str) -> Result<Vec<u8>, AssetError> {
     let request = json!({ "path": path }).to_string();
-    let text = unsafe { imports::asset(request) }.map_err(|error| AssetError {
+    let text = unsafe { ffi::asset(request) }.map_err(|error| AssetError {
         code: "host".to_string(),
         message: error.to_string(),
     })?;

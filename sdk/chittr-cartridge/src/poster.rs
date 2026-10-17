@@ -10,6 +10,7 @@
 //! Quotas: 5 actions per Hook call and 1 per `render`, and 30 per minute per Chitt. Past them a call
 //! returns `rate_limited`.
 
+use crate::ffi;
 use serde_json::{json, Map, Value};
 use std::fmt;
 
@@ -17,46 +18,6 @@ use std::fmt;
 /// deferred until the caller commits, so the guest can't know the new id: pass this as `postId`, and the host
 /// fills it in when the reply commits. A refused action leaves it unresolved, and the action is `not_found`.
 pub const NEW_POST_REF: &str = "$new";
-
-mod imports {
-    use extism_pdk::host_fn;
-
-    #[host_fn]
-    extern "ExtismHost" {
-        pub fn post_reply(request: String) -> String;
-        pub fn post_chitt(request: String) -> String;
-        pub fn edit_chitt(request: String) -> String;
-        pub fn delete_chitt(request: String) -> String;
-        pub fn react(request: String) -> String;
-        pub fn unreact(request: String) -> String;
-        pub fn rechitt(request: String) -> String;
-        pub fn unrechitt(request: String) -> String;
-        pub fn follow(request: String) -> String;
-        pub fn unfollow(request: String) -> String;
-        pub fn pin(request: String) -> String;
-        pub fn unpin(request: String) -> String;
-
-        pub fn admin_delete_post(request: String) -> String;
-        pub fn admin_edit_post(request: String) -> String;
-        pub fn admin_pin_chitt(request: String) -> String;
-        pub fn admin_unpin_chitt(request: String) -> String;
-        pub fn ban_user(request: String) -> String;
-        pub fn unban_user(request: String) -> String;
-        pub fn suspend_character(request: String) -> String;
-        pub fn unsuspend_character(request: String) -> String;
-        pub fn admin_delete_character(request: String) -> String;
-        pub fn admin_update_trolltag(request: String) -> String;
-        pub fn admin_update_character_name(request: String) -> String;
-        pub fn admin_update_character_bio(request: String) -> String;
-        pub fn admin_update_character_discriminator(request: String) -> String;
-        pub fn create_badge(request: String) -> String;
-        pub fn delete_badge(request: String) -> String;
-        pub fn grant_badge_to_user(request: String) -> String;
-        pub fn revoke_badge_from_user(request: String) -> String;
-        pub fn grant_badge_to_character(request: String) -> String;
-        pub fn revoke_badge_from_character(request: String) -> String;
-    }
-}
 
 /// A refused Poster Action. `code` is one of the codes in the module docs.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
@@ -133,14 +94,14 @@ pub struct EditArgs {
 /// Posts a reply to any Chitt. Returns the new post's id.
 pub fn post_reply(post_id: &str, content: &str) -> PosterResult<Option<String>> {
     let fields = invoke(unsafe {
-        imports::post_reply(json!({ "postId": post_id, "content": content }).to_string())
+        ffi::post_reply(json!({ "postId": post_id, "content": content }).to_string())
     })?;
     optional_string(&fields, "postId")
 }
 
 /// Posts a top-level Chitt as the poster's Character. Returns the new post's id.
 pub fn post_chitt(content: &str) -> PosterResult<Option<String>> {
-    let fields = invoke(unsafe { imports::post_chitt(json!({ "content": content }).to_string()) })?;
+    let fields = invoke(unsafe { ffi::post_chitt(json!({ "content": content }).to_string()) })?;
     optional_string(&fields, "postId")
 }
 
@@ -157,20 +118,20 @@ pub fn edit_chitt(args: EditArgs) -> PosterResult<()> {
     if let Some(ooc) = args.ooc {
         request.insert("ooc".to_string(), json!(ooc));
     }
-    invoke(unsafe { imports::edit_chitt(Value::Object(request).to_string()) })?;
+    invoke(unsafe { ffi::edit_chitt(Value::Object(request).to_string()) })?;
     Ok(())
 }
 
 /// Deletes a Chitt the poster's Character wrote. Needs the post_deletion permission on the poster's account.
 pub fn delete_chitt(post_id: &str) -> PosterResult<()> {
-    invoke(unsafe { imports::delete_chitt(json!({ "postId": post_id }).to_string()) })?;
+    invoke(unsafe { ffi::delete_chitt(json!({ "postId": post_id }).to_string()) })?;
     Ok(())
 }
 
 /// Adds a reaction. Returns `"added"`, or `"unchanged"` when the reaction was already there.
 pub fn react(post_id: &str, reaction: Reaction) -> PosterResult<Option<String>> {
     let fields = invoke(unsafe {
-        imports::react(json!({ "postId": post_id, "type": reaction.as_str() }).to_string())
+        ffi::react(json!({ "postId": post_id, "type": reaction.as_str() }).to_string())
     })?;
     optional_string(&fields, "action")
 }
@@ -178,48 +139,46 @@ pub fn react(post_id: &str, reaction: Reaction) -> PosterResult<Option<String>> 
 /// Removes a reaction. Returns `"removed"`, or `"unchanged"` when there was none.
 pub fn unreact(post_id: &str, reaction: Reaction) -> PosterResult<Option<String>> {
     let fields = invoke(unsafe {
-        imports::unreact(json!({ "postId": post_id, "type": reaction.as_str() }).to_string())
+        ffi::unreact(json!({ "postId": post_id, "type": reaction.as_str() }).to_string())
     })?;
     optional_string(&fields, "action")
 }
 
 /// Rechitts a Chitt. Returns the rechitt's id.
 pub fn rechitt(post_id: &str) -> PosterResult<Option<String>> {
-    let fields = invoke(unsafe { imports::rechitt(json!({ "postId": post_id }).to_string()) })?;
+    let fields = invoke(unsafe { ffi::rechitt(json!({ "postId": post_id }).to_string()) })?;
     optional_string(&fields, "rechittId")
 }
 
 /// Takes back a Rechitt.
 pub fn unrechitt(post_id: &str) -> PosterResult<()> {
-    invoke(unsafe { imports::unrechitt(json!({ "postId": post_id }).to_string()) })?;
+    invoke(unsafe { ffi::unrechitt(json!({ "postId": post_id }).to_string()) })?;
     Ok(())
 }
 
 /// Follows a Character. Returns `"followed"`, or `"unchanged"` when already followed.
 pub fn follow(character_id: &str) -> PosterResult<Option<String>> {
     let fields =
-        invoke(unsafe { imports::follow(json!({ "characterId": character_id }).to_string()) })?;
+        invoke(unsafe { ffi::follow(json!({ "characterId": character_id }).to_string()) })?;
     optional_string(&fields, "action")
 }
 
 /// Unfollows a Character. Returns `"unfollowed"`, or `"unchanged"` when not followed.
 pub fn unfollow(character_id: &str) -> PosterResult<Option<String>> {
     let fields =
-        invoke(unsafe { imports::unfollow(json!({ "characterId": character_id }).to_string()) })?;
+        invoke(unsafe { ffi::unfollow(json!({ "characterId": character_id }).to_string()) })?;
     optional_string(&fields, "action")
 }
 
 /// Pins a Chitt or Rechitt to the poster's Character profile.
 pub fn pin(post_id: &str, kind: PinType) -> PosterResult<()> {
-    invoke(unsafe {
-        imports::pin(json!({ "postId": post_id, "type": kind.as_str() }).to_string())
-    })?;
+    invoke(unsafe { ffi::pin(json!({ "postId": post_id, "type": kind.as_str() }).to_string()) })?;
     Ok(())
 }
 
 /// Clears the poster's Character's pinned Chitt.
 pub fn unpin() -> PosterResult<()> {
-    invoke(unsafe { imports::unpin(json!({}).to_string()) })?;
+    invoke(unsafe { ffi::unpin(json!({}).to_string()) })?;
     Ok(())
 }
 
@@ -257,40 +216,40 @@ impl BanDuration {
 
 /// Deletes any Chitt, not only the poster's own. Needs `post_deletion`.
 pub fn admin_delete_post(post_id: &str) -> PosterResult<()> {
-    invoke(unsafe { imports::admin_delete_post(json!({ "postId": post_id }).to_string()) })?;
+    invoke(unsafe { ffi::admin_delete_post(json!({ "postId": post_id }).to_string()) })?;
     Ok(())
 }
 
 /// Edits any Chitt's text. Needs `post_editing`.
 pub fn admin_edit_post(post_id: &str, content: &str) -> PosterResult<()> {
     invoke(unsafe {
-        imports::admin_edit_post(json!({ "postId": post_id, "content": content }).to_string())
+        ffi::admin_edit_post(json!({ "postId": post_id, "content": content }).to_string())
     })?;
     Ok(())
 }
 
 /// Pins a Chitt site-wide. Needs `pin_chitt`.
 pub fn admin_pin_chitt(post_id: &str) -> PosterResult<()> {
-    invoke(unsafe { imports::admin_pin_chitt(json!({ "postId": post_id }).to_string()) })?;
+    invoke(unsafe { ffi::admin_pin_chitt(json!({ "postId": post_id }).to_string()) })?;
     Ok(())
 }
 
 /// Removes the site-wide pin from a Chitt. Needs `pin_chitt`.
 pub fn admin_unpin_chitt(post_id: &str) -> PosterResult<()> {
-    invoke(unsafe { imports::admin_unpin_chitt(json!({ "postId": post_id }).to_string()) })?;
+    invoke(unsafe { ffi::admin_unpin_chitt(json!({ "postId": post_id }).to_string()) })?;
     Ok(())
 }
 
 /// Bans a user account. Needs `user_banning`.
 pub fn ban_user(user_id: &str, duration: BanDuration, reason: &str) -> PosterResult<()> {
     let request = json!({ "userId": user_id, "duration": duration.as_str(), "reason": reason });
-    invoke(unsafe { imports::ban_user(request.to_string()) })?;
+    invoke(unsafe { ffi::ban_user(request.to_string()) })?;
     Ok(())
 }
 
 /// Lifts a user account's ban. Needs `user_banning`.
 pub fn unban_user(user_id: &str) -> PosterResult<()> {
-    invoke(unsafe { imports::unban_user(json!({ "userId": user_id }).to_string()) })?;
+    invoke(unsafe { ffi::unban_user(json!({ "userId": user_id }).to_string()) })?;
     Ok(())
 }
 
@@ -302,14 +261,14 @@ pub fn suspend_character(
 ) -> PosterResult<()> {
     let request =
         json!({ "characterId": character_id, "duration": duration.as_str(), "reason": reason });
-    invoke(unsafe { imports::suspend_character(request.to_string()) })?;
+    invoke(unsafe { ffi::suspend_character(request.to_string()) })?;
     Ok(())
 }
 
 /// Lifts a Character's suspension. Needs `character_suspension`.
 pub fn unsuspend_character(character_id: &str) -> PosterResult<()> {
     invoke(unsafe {
-        imports::unsuspend_character(json!({ "characterId": character_id }).to_string())
+        ffi::unsuspend_character(json!({ "characterId": character_id }).to_string())
     })?;
     Ok(())
 }
@@ -317,7 +276,7 @@ pub fn unsuspend_character(character_id: &str) -> PosterResult<()> {
 /// Deletes a Character. Needs `character_deletion`.
 pub fn admin_delete_character(character_id: &str) -> PosterResult<()> {
     invoke(unsafe {
-        imports::admin_delete_character(json!({ "characterId": character_id }).to_string())
+        ffi::admin_delete_character(json!({ "characterId": character_id }).to_string())
     })?;
     Ok(())
 }
@@ -325,7 +284,7 @@ pub fn admin_delete_character(character_id: &str) -> PosterResult<()> {
 /// Changes a Character's trolltag. Needs `character_suspension`.
 pub fn admin_update_trolltag(character_id: &str, trolltag: &str) -> PosterResult<()> {
     invoke(unsafe {
-        imports::admin_update_trolltag(
+        ffi::admin_update_trolltag(
             json!({ "characterId": character_id, "trolltag": trolltag }).to_string(),
         )
     })?;
@@ -335,7 +294,7 @@ pub fn admin_update_trolltag(character_id: &str, trolltag: &str) -> PosterResult
 /// Renames a Character. Needs `character_suspension`.
 pub fn admin_update_character_name(character_id: &str, name: &str) -> PosterResult<()> {
     invoke(unsafe {
-        imports::admin_update_character_name(
+        ffi::admin_update_character_name(
             json!({ "characterId": character_id, "name": name }).to_string(),
         )
     })?;
@@ -345,7 +304,7 @@ pub fn admin_update_character_name(character_id: &str, name: &str) -> PosterResu
 /// Changes a Character's bio; an empty bio clears it. Needs `character_suspension`.
 pub fn admin_update_character_bio(character_id: &str, bio: &str) -> PosterResult<()> {
     invoke(unsafe {
-        imports::admin_update_character_bio(
+        ffi::admin_update_character_bio(
             json!({ "characterId": character_id, "bio": bio }).to_string(),
         )
     })?;
@@ -358,7 +317,7 @@ pub fn admin_update_character_discriminator(
     discriminator: &str,
 ) -> PosterResult<()> {
     let request = json!({ "characterId": character_id, "discriminator": discriminator });
-    invoke(unsafe { imports::admin_update_character_discriminator(request.to_string()) })?;
+    invoke(unsafe { ffi::admin_update_character_discriminator(request.to_string()) })?;
     Ok(())
 }
 
@@ -366,20 +325,20 @@ pub fn admin_update_character_discriminator(
 pub fn create_badge(name: &str, description: &str, image_data_uri: &str) -> PosterResult<()> {
     let request =
         json!({ "name": name, "description": description, "imageDataUri": image_data_uri });
-    invoke(unsafe { imports::create_badge(request.to_string()) })?;
+    invoke(unsafe { ffi::create_badge(request.to_string()) })?;
     Ok(())
 }
 
 /// Deletes a badge, with every grant and equip of it. Needs `badge_management`.
 pub fn delete_badge(badge_id: &str) -> PosterResult<()> {
-    invoke(unsafe { imports::delete_badge(json!({ "badgeId": badge_id }).to_string()) })?;
+    invoke(unsafe { ffi::delete_badge(json!({ "badgeId": badge_id }).to_string()) })?;
     Ok(())
 }
 
 /// Grants a badge to a user account. Needs `badge_management`.
 pub fn grant_badge_to_user(user_id: &str, badge_id: &str) -> PosterResult<()> {
     invoke(unsafe {
-        imports::grant_badge_to_user(json!({ "userId": user_id, "badgeId": badge_id }).to_string())
+        ffi::grant_badge_to_user(json!({ "userId": user_id, "badgeId": badge_id }).to_string())
     })?;
     Ok(())
 }
@@ -387,9 +346,7 @@ pub fn grant_badge_to_user(user_id: &str, badge_id: &str) -> PosterResult<()> {
 /// Revokes a badge from a user account. Needs `badge_management`.
 pub fn revoke_badge_from_user(user_id: &str, badge_id: &str) -> PosterResult<()> {
     invoke(unsafe {
-        imports::revoke_badge_from_user(
-            json!({ "userId": user_id, "badgeId": badge_id }).to_string(),
-        )
+        ffi::revoke_badge_from_user(json!({ "userId": user_id, "badgeId": badge_id }).to_string())
     })?;
     Ok(())
 }
@@ -397,7 +354,7 @@ pub fn revoke_badge_from_user(user_id: &str, badge_id: &str) -> PosterResult<()>
 /// Grants a badge to a Character. Needs `grant_badge`.
 pub fn grant_badge_to_character(character_id: &str, badge_id: &str) -> PosterResult<()> {
     invoke(unsafe {
-        imports::grant_badge_to_character(
+        ffi::grant_badge_to_character(
             json!({ "characterId": character_id, "badgeId": badge_id }).to_string(),
         )
     })?;
@@ -407,7 +364,7 @@ pub fn grant_badge_to_character(character_id: &str, badge_id: &str) -> PosterRes
 /// Revokes a badge from a Character. Needs `revoke_badge`.
 pub fn revoke_badge_from_character(character_id: &str, badge_id: &str) -> PosterResult<()> {
     invoke(unsafe {
-        imports::revoke_badge_from_character(
+        ffi::revoke_badge_from_character(
             json!({ "characterId": character_id, "badgeId": badge_id }).to_string(),
         )
     })?;

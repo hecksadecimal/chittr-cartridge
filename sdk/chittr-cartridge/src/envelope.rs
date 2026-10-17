@@ -293,6 +293,28 @@ impl GateResult {
     }
 }
 
+/// A KV, timer or Render Push failure becomes the Hook's own failure with the host's code and message, so a Hook
+/// that returns `Result<_, HookError>` can use `?` on those calls.
+impl From<crate::kv::KvError> for HookError {
+    fn from(error: crate::kv::KvError) -> Self {
+        Self::new(error.code, error.message)
+    }
+}
+
+/// A refused Poster Action becomes the Hook's own failure, as `From<KvError>` does.
+impl From<crate::poster::PosterError> for HookError {
+    fn from(error: crate::poster::PosterError) -> Self {
+        Self::new(error.code, error.message)
+    }
+}
+
+/// A failed `asset` call becomes the Hook's own failure, as `From<KvError>` does.
+impl From<crate::host::AssetError> for HookError {
+    fn from(error: crate::host::AssetError) -> Self {
+        Self::new(error.code, error.message)
+    }
+}
+
 /// The wire shape of a handled failure.
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct ErrorEnvelope {

@@ -74,6 +74,9 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
             match validate::validate(&bytes) {
                 Ok(cartridge) => {
                     println!("{}", summary(&cartridge));
+                    for warning in &cartridge.warnings {
+                        eprintln!("warning: {warning}");
+                    }
                     Ok(ExitCode::SUCCESS)
                 }
                 Err(error) => {
@@ -125,6 +128,9 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
                     std::fs::write(&out, &bytes)
                         .with_context(|| format!("writing {}", out.display()))?;
                     println!("wrote {} ({})", out.display(), summary(&cartridge));
+                    for warning in &cartridge.warnings {
+                        eprintln!("warning: {warning}");
+                    }
                     Ok(ExitCode::SUCCESS)
                 }
                 Err(error) => {

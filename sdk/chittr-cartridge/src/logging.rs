@@ -20,6 +20,9 @@ pub fn __emit(level: LogLevel, message: &str) {
     while !message.is_char_boundary(end) {
         end -= 1;
     }
+    #[cfg(all(feature = "testing", not(target_family = "wasm")))]
+    crate::testing::record_log(level, &message[..end]);
+    #[cfg(not(all(feature = "testing", not(target_family = "wasm"))))]
     extism_pdk::log!(level, "{}", &message[..end]);
 }
 

@@ -30,6 +30,9 @@ pub mod __private;
 pub mod kv;
 
 #[cfg(feature = "server")]
+pub(crate) mod ffi;
+
+#[cfg(feature = "server")]
 pub mod timer;
 
 #[cfg(feature = "server")]
@@ -40,6 +43,10 @@ pub mod push;
 
 #[cfg(feature = "server")]
 pub use chittr_cartridge_macros::hook;
+
+/// Test support for Server Guests: an in-memory host and envelope builders (`testing` feature).
+#[cfg(feature = "testing")]
+pub mod testing;
 
 /// The Canvas Guest API (ABI v1): a Canvas2D-like context over the command buffer (`canvas` feature).
 #[cfg(feature = "canvas")]

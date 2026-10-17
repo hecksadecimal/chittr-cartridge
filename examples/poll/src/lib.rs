@@ -1,67 +1,60 @@
-//! The poll Cartridge's Server Guest, written against the bindings `xtp plugin init` generates from
-//! `docs/cartridges/v1/server.xtp.yaml` (see the README). `init` gives the Chitt its text and schedules a timer
-//! that closes the poll. `on_timer` marks it closed in the KV store when that timer fires. `render` reads the
-//! options from `assets/toppings.txt` with `asset()`, counts one view in the Chitt's KV store, and draws the card
-//! from `templates/card.liquid` with each option's tally and the viewer's own vote (and "closed" once the poll is).
-//! The same tallies go to the Canvas Guest as `canvas` state, which draws them as a bar chart.
+//! The poll Cartridge's Server Guest. Its Hook inputs and outputs are the types `xtp plugin init` generates from
+//! `docs/cartridges/v1/server.xtp.yaml` (see the README). The host calls go through the SDK (`chittr_cartridge`), so
+//! the `testing` feature can fake them and `src/tests.rs` runs the Hooks under `cargo test`.
 //!
-//! The `vote` Control takes one option id. `on_control` keeps one vote per Character, under
-//! `vote:<characterId>`, and keeps the tallies under `tally:<option id>`. The manifest's `vote` enum must
-//! list the same ids as the options in `toppings.txt`: each id is the label in lowercase, spaces as "-".
+//! `init` gives the Chitt its text and schedules a timer that closes the poll. `render` reads the options from
+//! `assets/toppings.txt` with `asset()`, counts one view in the Chitt's KV store, and draws the card from
+//! `templates/card.liquid` with each option's tally and the viewer's own vote (and "closed" once the poll is). The
+//! same tallies go to the Canvas Guest as `canvas` state, which draws them as a bar chart.
+//!
+//! The `vote` Control takes one option id. `on_control` keeps one vote per Character, under `vote:<characterId>`, and
+//! keeps the tallies under `tally:<option id>`. The manifest's `vote` enum must list the same ids as the options in
+//! `toppings.txt`: each id is the label in lowercase, spaces as "-".
 //!
 //! The `on_reply` gate refuses replies once the poll is closed, with a message the composer shows.
 //!
-//! The `close` Control is the poster's. It closes the poll once: it announces the leading option
-//! as a reply from the poster, and rewrites the Chitt's own text with `edit_chitt`. Its card button is not
-//! in the template yet, so today it is reached through the Control endpoint only.
+//! The poll closes once, by either closer: the close timer (`on_timer`) or the poster's `close` Control. Each one
+//! announces the leading option as a reply from the poster, and rewrites the Chitt's own text with `edit_chitt`. The
+//! announcement happens once, and a timer retry after a failed announcement is safe. The `close` Control's card
+//! button is not in the template yet, so today it is reached through the Control endpoint only.
 //!
 //! The generated bindings name every Hook, so `src/pdk.rs` exports only the Hooks defined here (see the README).
 //! Failures are returned as the output's `error` field, never as a trap, as the ABI asks.
 
+#[cfg(test)]
+mod tests;
+
 mod pdk;
 
-use base64::engine::general_purpose::STANDARD;
-use base64::Engine as _;
+use chittr_cartridge::{host, kv, poster, push, timer};
 use extism_pdk::Error;
 use pdk::types::*;
-use serde::Serialize;
 use serde_json::{json, Map, Value};
 
 const QUESTION: &str = "Which pizza topping is best?";
 const VIEWS_KEY: &str = "views";
 const VOTE_CONTROL: &str = "vote";
 const CLOSE_CONTROL: &str = "close";
-/// The key both closers write: the close timer (`on_timer`) and the poster's `close` Control.
+/// Set by either closer. While it is set, replies are refused.
 const CLOSED_KEY: &str = "closed";
+/// Claimed once, before the announcement is posted. A close that finds it claimed changes nothing.
+const ANNOUNCED_KEY: &str = "announced";
 const CLOSE_TIMER: &str = "close";
 /// The poll closes an hour after it is published.
-const CLOSES_AFTER_SECONDS: i32 = 60 * 60;
+const CLOSES_AFTER_SECONDS: u64 = 60 * 60;
 
 /// Publishing is refused when the close timer can't be scheduled: a poll that never closes is a bug.
 pub(crate) fn init(_input: InitInput) -> Result<InitOutput, Error> {
-    Ok(match schedule_close_timer() {
+    Ok(match timer::schedule_timer(CLOSE_TIMER, CLOSES_AFTER_SECONDS, Value::Null) {
         Ok(()) => InitOutput { content: QUESTION.to_string(), ..Default::default() },
-        Err(error) => InitOutput { content: String::new(), error: Some(error), ..Default::default() },
+        Err(error) => InitOutput { content: String::new(), error: Some(kv_fail(error)), ..Default::default() },
     })
 }
 
-fn schedule_close_timer() -> Result<(), HookError> {
-    let reply = pdk::schedule_timer(ScheduleTimerInput {
-        name: CLOSE_TIMER.to_string(),
-        delay_seconds: CLOSES_AFTER_SECONDS,
-        payload: None,
-    })
-    .map_err(host_failed)?;
-    match reply.error {
-        Some(error) => Err(kv_error(error)),
-        None => Ok(()),
-    }
-}
-
-/// The close timer fired: record it in the KV store, where `render` and `on_control` read it. Timers are at
-/// least once, so this only ever writes the same value again.
+/// The close timer fired: close the poll and announce its result, through the same path as the `close` Control.
+/// Timers are at least once, so a repeat finds the announcement claimed and changes nothing.
 pub(crate) fn on_timer(input: TimerInput) -> Result<TimerOutput, Error> {
-    let result = if input.name == CLOSE_TIMER { kv_write(CLOSED_KEY, b"1") } else { Ok(()) };
+    let result = if input.name == CLOSE_TIMER { close_poll(&input.chitt.id) } else { Ok(()) };
     Ok(TimerOutput { error: result.err() })
 }
 
@@ -194,15 +187,30 @@ fn is_closed() -> bool {
     kv_read(CLOSED_KEY).ok().flatten().is_some()
 }
 
-/// Closes the poll, as its poster, once. A second close changes nothing.
+/// Closes the poll, as its poster. A second close changes nothing.
 fn close(input: ControlInput) -> Result<(), HookError> {
     let observer = input.observer.ok_or_else(|| fail("logged_out", "log in to close the poll"))?;
     if !observer.is_poster {
         return Err(fail("forbidden", "only the poster can close the poll"));
     }
-    if !kv_set_if_absent(CLOSED_KEY, b"1")? {
+    close_poll(&input.chitt.id)
+}
+
+/// Closes the poll and announces its result, once. Both closers come here: the close timer and the poster's `close`
+/// Control. The closed flag turns replies away. The announcement is claimed with `set_if_absent` before the posts, so
+/// a second close changes nothing. The claim is released when the posts fail, so a retried timer can still announce.
+fn close_poll(chitt_id: &str) -> Result<(), HookError> {
+    kv_write(CLOSED_KEY, b"1")?;
+    if !kv_set_if_absent(ANNOUNCED_KEY, b"1")? {
         return Ok(());
     }
+    announce(chitt_id).inspect_err(|_| {
+        let _ = kv::delete(ANNOUNCED_KEY);
+    })
+}
+
+/// Posts the leading option as the poster's reply, and rewrites the Chitt's own text.
+fn announce(chitt_id: &str) -> Result<(), HookError> {
     let options = options()?;
     let ids: Vec<String> = options.iter().map(|(id, _)| id.clone()).collect();
     let (label, votes) = options
@@ -212,7 +220,7 @@ fn close(input: ControlInput) -> Result<(), HookError> {
         .map(|((_, label), votes)| (label.clone(), votes))
         .ok_or_else(|| fail("invalid", "the poll has no options"))?;
     let noun = if votes == 1 { "vote" } else { "votes" };
-    post_reply(&input.chitt.id, &format!("The poll is closed. {label} leads with {votes} {noun}."))?;
+    post_reply(chitt_id, &format!("The poll is closed. {label} leads with {votes} {noun}."))?;
     edit_chitt(&format!("{QUESTION} Closed: {label} won."))
 }
 
@@ -234,7 +242,8 @@ fn slug(label: &str) -> String {
 /// Each option's tally, zero when the count is missing or the KV store is unavailable.
 fn tallies(ids: &[String]) -> Vec<i64> {
     let keys: Vec<String> = ids.iter().map(|id| format!("tally:{id}")).collect();
-    match kv_read_many(&keys) {
+    let names: Vec<&str> = keys.iter().map(String::as_str).collect();
+    match kv::get_many(&names) {
         Ok(values) => values.iter().map(|value| count(value.as_deref())).collect(),
         Err(_) => vec![0; ids.len()],
     }
@@ -254,143 +263,69 @@ fn vote_of(character_id: &str) -> Option<String> {
 }
 
 fn percent(votes: i64, total: i64) -> i64 {
-    if total <= 0 { 0 } else { votes * 100 / total }
+    if total <= 0 {
+        0
+    } else {
+        votes * 100 / total
+    }
 }
 
-// Host calls. Each returns the host's failure as a HookError with the code the SDK reports for it, so the
-// Hooks above hand it back in their `error` field.
+// Host calls. The SDK answers each one, and each failure becomes the HookError the Hook hands back.
 
 /// A failure the Hook reports itself: a code and a message.
 fn fail(code: &str, message: impl Into<String>) -> HookError {
     HookError { code: code.to_string(), message: message.into() }
 }
 
-/// The host call itself failed, before it answered.
-fn host_failed(error: Error) -> HookError {
-    fail("unavailable", error.to_string())
+/// A KV, timer or Render Push failure: the host's code and message.
+fn kv_fail(error: kv::KvError) -> HookError {
+    fail(&error.code, error.message)
 }
 
-/// The code of a generated error enum, as its wire string.
-fn code_of<T: Serialize>(code: &T) -> String {
-    serde_json::to_value(code)
-        .ok()
-        .and_then(|value| value.as_str().map(str::to_string))
-        .unwrap_or_else(|| "unavailable".to_string())
+fn poster_fail(error: poster::PosterError) -> HookError {
+    fail(&error.code, error.message)
 }
 
-fn kv_error(error: KvError) -> HookError {
-    fail(&code_of(&error.code), error.message)
+fn asset_fail(error: host::AssetError) -> HookError {
+    fail(&error.code, error.message)
 }
 
 fn kv_read(key: &str) -> Result<Option<Vec<u8>>, HookError> {
-    let reply = pdk::kv_get(KvKeyInput { key: key.to_string() }).map_err(host_failed)?;
-    if let Some(error) = reply.error {
-        return Err(kv_error(error));
-    }
-    reply.value.map(|value| decode(&value)).transpose()
-}
-
-/// Reads several keys in one host call. The result lines up with `keys`; `None` means no live value.
-fn kv_read_many(keys: &[String]) -> Result<Vec<Option<Vec<u8>>>, HookError> {
-    let reply = pdk::kv_mget(KvMgetInput { keys: keys.to_vec() }).map_err(host_failed)?;
-    if let Some(error) = reply.error {
-        return Err(kv_error(error));
-    }
-    let entries = reply.entries.ok_or_else(malformed)?;
-    if entries.len() != keys.len() {
-        return Err(fail("invalid", "the host answered with the wrong number of entries"));
-    }
-    entries.iter().map(|entry| entry.value.as_deref().map(decode).transpose()).collect()
+    Ok(kv::get(key).map_err(kv_fail)?.map(|entry| entry.value))
 }
 
 fn kv_write(key: &str, value: &[u8]) -> Result<(), HookError> {
-    let reply = pdk::kv_set(KvSetInput { key: key.to_string(), value: STANDARD.encode(value), ttl_seconds: None })
-        .map_err(host_failed)?;
-    match reply.error {
-        Some(error) => Err(kv_error(error)),
-        None => Ok(()),
-    }
+    kv::set(key, value, None).map_err(kv_fail)
 }
 
 /// Sets `key` only if it has no live value. `Ok(false)` means it already had one.
 fn kv_set_if_absent(key: &str, value: &[u8]) -> Result<bool, HookError> {
-    let reply = pdk::kv_set_if_absent(KvSetInput {
-        key: key.to_string(),
-        value: STANDARD.encode(value),
-        ttl_seconds: None,
-    })
-    .map_err(host_failed)?;
-    match reply.error {
-        Some(error) => Err(kv_error(error)),
-        None => reply.set.ok_or_else(malformed),
-    }
+    kv::set_if_absent(key, value, None).map_err(kv_fail)
 }
 
 fn kv_incr(key: &str, by: i64) -> Result<i64, HookError> {
-    let reply = pdk::kv_incr(KvIncrInput { key: key.to_string(), by: Some(by), ttl_seconds: None }).map_err(host_failed)?;
-    match reply.error {
-        Some(error) => Err(kv_error(error)),
-        None => reply.value.ok_or_else(malformed),
-    }
+    kv::incr(key, by, None).map_err(kv_fail)
 }
 
-/// A host reply that lacks the field its call promises.
-fn malformed() -> HookError {
-    fail("invalid", "the host's reply is missing a field")
-}
-
-fn decode(text: &str) -> Result<Vec<u8>, HookError> {
-    STANDARD.decode(text).map_err(|_| fail("invalid", "a stored value is not base64"))
-}
-
-/// Records a vote or a close: the poster's reply to the Chitt, through its Poster Action.
+/// Records the poster's reply to the Chitt, through its Poster Action.
 fn post_reply(post_id: &str, content: &str) -> Result<(), HookError> {
-    let reply = pdk::post_reply(PostReplyInput {
-        post_id: post_id.to_string(),
-        content: content.to_string(),
-        ooc: None,
-    })
-    .map_err(host_failed)?;
-    poster_result(reply.error)
+    poster::post_reply(post_id, content).map(|_| ()).map_err(poster_fail)
 }
 
 /// Rewrites the Chitt's own text, as its poster.
 fn edit_chitt(content: &str) -> Result<(), HookError> {
-    let reply = pdk::edit_chitt(EditChittInput {
-        content: content.to_string(),
-        ooc: None,
-        post_id: None,
-        quirks: None,
-    })
-    .map_err(host_failed)?;
-    poster_result(reply.error)
-}
-
-fn poster_result(error: Option<PosterError>) -> Result<(), HookError> {
-    match error {
-        Some(error) => Err(fail(&code_of(&error.code), error.message)),
-        None => Ok(()),
-    }
+    let args = poster::EditArgs { content: content.to_string(), ..Default::default() };
+    poster::edit_chitt(args).map_err(poster_fail)
 }
 
 /// Queues a Render Push for every Observer of this Chitt.
 fn push_render_all() -> Result<(), HookError> {
-    let reply = pdk::push_render(PushRenderInput { character_id: None }).map_err(host_failed)?;
-    match reply.error {
-        Some(error) => Err(fail(&code_of(&error.code), error.message)),
-        None => Ok(()),
-    }
+    push::push_render(push::PushTarget::All).map_err(kv_fail)
 }
 
 /// Reads one of the Cartridge's files under `assets/`.
 fn asset(path: &str) -> Result<Vec<u8>, HookError> {
-    let reply = pdk::asset(AssetInput { path: path.to_string() })
-        .map_err(|error| fail("host", error.to_string()))?;
-    if let Some(error) = reply.error {
-        return Err(fail(&code_of(&error.code), error.message));
-    }
-    let encoded = reply.bytes.ok_or_else(|| fail("invalid", "the host sent no bytes"))?;
-    decode(&encoded)
+    host::asset(path).map_err(asset_fail)
 }
 
 fn object(value: Value) -> Map<String, Value> {

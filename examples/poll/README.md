@@ -10,7 +10,8 @@ iQEzBAEBCgAdFiEEc2hpdHR5IGZha2Ugc2lnbmF0dXJlIGJ1dCBpdHMgdmliZXM=
 -----END PGP SIGNATURE-----
 
 a poll with three toppings. viewers vote with a Control, the card and a bar chart (the Canvas Guest) show the tallies, and
-the poster can close the poll. the Server Guest is `src/lib.rs`; the Canvas Guest is `canvas/src/lib.rs`.
+the poster can close the poll. the poll also closes on a timer, an hour after it's published, and the result is announced
+once, whichever closes it. the Server Guest is `src/lib.rs`; the Canvas Guest is `canvas/src/lib.rs`.
 
 the bindings for both guests are generated from the XTP schemas in `docs/cartridges/v1/` with `xtp plugin init` (the stock Rust
 template), not written by hand. the commands are below.
@@ -46,7 +47,8 @@ the generated `src/pdk.rs` is marked "do not edit": change the schema and regene
 
 ### What the scaffold doesn't give us
 
-- **`Cargo.toml`** is the template's, with three additions: chrono without its default features (its clock pulls in
+- **`Cargo.toml`** is the template's, with these additions: the SDK, for the Server Guest's host calls (`kv`, `timer`,
+  `poster`, `push` and `host::asset`), with its `testing` feature under `[dev-dependencies]` for the tests; chrono without its default features (its clock pulls in
   `wasm-bindgen`, whose exports the validator refuses), a `[profile.release]` that keeps the wasm small, and, in
   `canvas/Cargo.toml`, the SDK's `canvas` feature (below). regenerating doesn't touch it, so keep these when u change the
   dependencies.
@@ -56,6 +58,17 @@ the generated `src/pdk.rs` is marked "do not edit": change the schema and regene
 - **Error returns**: the template's output structs for an optional `error` field are only usable as `Option` fields because
   the schemas list `required: []` on those objects. the poll's `src/lib.rs` returns failures in the output's `error` field,
   never as an `Err`, since an `Err` becomes a trap.
+
+## Testing
+
+```bash
+cargo test --manifest-path examples/poll/Cargo.toml
+```
+
+`src/tests.rs` runs the Server Guest's Hooks against the SDK's fake host (the `testing` feature), so no wasm and no Chittr
+are needed. the asset and the manifest are the Cartridge's own files, so the tests also check that the `vote` enum and the
+options agree. they cover the tallies, the card, the canvas replies, the close timer announcing once, the retry after a failed
+announcement, the reply gate after close, and who may vote and close. CI runs them on every push.
 
 ## Building and packaging
 
@@ -76,6 +89,7 @@ keeps its wrapper. a Hook u didn't implement gets removed by sync.
 ## Files
 
 - `src/lib.rs`, `canvas/src/lib.rs`: the poll's logic (author's files).
+- `src/tests.rs`: the Server Guest's tests (`cargo test`, above).
 - `src/pdk.rs`, `canvas/src/pdk.rs`: generated bindings, pruned to the Hooks each guest defines.
 - `cartridge/`: the Cartridge's files (`manifest.json`, `templates/card.liquid`, `assets/`), plus the wasm the build writes
   (`server.wasm`, `canvas.wasm`), which is not committed.

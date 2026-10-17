@@ -166,3 +166,27 @@ fn server_project_builds_and_checks_without_edits() {
 fn canvas_project_builds_and_checks_without_edits() {
     build_and_check(true);
 }
+
+/// A Server Guest with no `init` still validates: the missing Hook is a warning, because `render` is the only Hook the
+/// format requires. Chittr refuses to publish it, so the warning says so.
+#[test]
+fn a_missing_init_is_a_warning_and_not_an_error() {
+    let dir = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../conformance/cases/ok-minimal/files"
+    );
+    let archive = pack::archive_bytes(std::path::Path::new(dir)).expect("archive");
+    let cartridge = validate::validate(&archive).expect("the minimal case is a valid Cartridge");
+    assert_eq!(
+        cartridge.warnings,
+        vec![validate::NO_INIT_WARNING.to_string()]
+    );
+
+    let dir = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../conformance/cases/ok-server-all-hooks/files"
+    );
+    let archive = pack::archive_bytes(std::path::Path::new(dir)).expect("archive");
+    let cartridge = validate::validate(&archive).expect("the all-hooks case is a valid Cartridge");
+    assert!(cartridge.warnings.is_empty());
+}

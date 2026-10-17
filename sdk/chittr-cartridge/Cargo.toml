@@ -13,6 +13,9 @@ name = "chittr_cartridge"
 [features]
 default = ["server"]
 server = ["dep:serde", "dep:serde_json", "dep:extism-pdk", "dep:chittr-cartridge-macros", "dep:base64"]
+# Test support: an in-memory host the SDK's host functions answer from on a native target, and envelope builders.
+# Add it under [dev-dependencies] with the features you test with; the wasm build never enables it.
+testing = ["server"]
 # The Canvas Guest API: a Canvas2D-like context that encodes the command buffer (see design.md). The encoder
 # itself needs no host, so its tests run natively.
 canvas = ["dep:serde", "dep:serde_json", "dep:extism-pdk"]

@@ -80,12 +80,17 @@ fn cycle(dir: &Path, out: &Path) {
         Err(message) => println!("[{stamp}] {message}"),
         Ok(bytes) => match validate::validate(&bytes) {
             Ok(cartridge) => match std::fs::write(out, &bytes) {
-                Ok(()) => println!(
-                    "[{stamp}] ok: {} {} -> {}",
-                    cartridge.manifest.name,
-                    cartridge.manifest.version,
-                    out.display()
-                ),
+                Ok(()) => {
+                    println!(
+                        "[{stamp}] ok: {} {} -> {}",
+                        cartridge.manifest.name,
+                        cartridge.manifest.version,
+                        out.display()
+                    );
+                    for warning in &cartridge.warnings {
+                        println!("[{stamp}] warning: {warning}");
+                    }
+                }
                 Err(error) => println!("[{stamp}] could not write {}: {error}", out.display()),
             },
             Err(error) => println!("[{stamp}] {error}"),

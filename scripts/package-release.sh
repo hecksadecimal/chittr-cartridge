@@ -1,6 +1,7 @@
 #!/bin/sh
 # Packages one release zip of the chittr-cartridge CLI: chittr-cartridge-<version>-<target>.zip. It holds the binary, the
-# README, both licenses, the v1 docs and schemas, and the examples' sources without their build output. The release
+# README, both licenses, the v1 docs and schemas, the SDK, and the examples' sources without their build output. The SDK
+# is there because the examples depend on it by path, so an unzipped release builds them as they are. The release
 # workflow runs it once per target. It needs a shell and either zip or 7z.
 #
 # Usage: scripts/package-release.sh <version> <target> <binary> [out-dir]
@@ -49,6 +50,11 @@ cp -R "$ROOT/docs/cartridges/v1" "$DIR/docs/cartridges/"
 # The examples' sources: no target/ directories, and no wasm, which the build script writes into each cartridge/.
 (cd "$ROOT" && tar --exclude=target --exclude='*.wasm' --exclude=.DS_Store -cf - examples) |
   (cd "$DIR" && tar -xf -)
+# The SDK the examples depend on by path. Its manifests inherit their package fields from the workspace, so the zip
+# carries the repository's workspace manifest too, without the CLI member the zip does not hold.
+(cd "$ROOT" && tar --exclude=target --exclude=.DS_Store -cf - sdk) |
+  (cd "$DIR" && tar -xf -)
+sed '/^    "cli",$/d' "$ROOT/Cargo.toml" > "$DIR/Cargo.toml"
 
 rm -f "$OUT_DIR/$NAME.zip"
 if command -v zip >/dev/null 2>&1; then

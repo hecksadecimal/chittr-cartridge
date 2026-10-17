@@ -69,7 +69,7 @@ chittr-cartridge --help
 ```
 
 the zip unpacks into a folder of the same name. it holds the binary, the README, both licenses, the v1 docs and schemas,
-and the examples' sources. on Windows the binary is `chittr-cartridge.exe`, and `Get-FileHash` checks it against
+the SDK, and the examples' sources, so the examples build from the unzipped folder as they are. on Windows the binary is `chittr-cartridge.exe`, and `Get-FileHash` checks it against
 `SHA256SUMS`.
 
 ## Start a Cartridge
@@ -87,6 +87,7 @@ walks u thru it.
 ```bash
 cargo build                       # the SDK and its macros
 cargo test --workspace --all-features
+cargo test --manifest-path examples/poll/Cargo.toml   # the poll's Hooks, run natively
 sh scripts/build-examples.sh      # every example's Server Guest and Canvas Guest, as wasm
 ```
 
@@ -98,7 +99,7 @@ the examples:
 | Example | What it shows |
 | --- | --- |
 | `examples/hello` | The smallest Server Guest: `init` and `render`, no Canvas Guest. |
-| `examples/poll` | A poll with a Control, a Canvas Guest bar chart, a gate on replies, and a timer. The reference for scaffolding. |
+| `examples/poll` | A poll with a Control, a Canvas Guest bar chart, a gate on replies, and a timer that announces the result. The reference for scaffolding, and for testing Hooks with `cargo test`. |
 | `examples/snake` | A playable Snake game in a Canvas Guest, with a leaderboard in the Server Guest. |
 | `examples/paint` | A shared pixel canvas, stored in the Server Guest's KV store and pushed to viewers. |
 
@@ -124,21 +125,41 @@ the validator is tested against.
 2. Open the chitt, and use **Replace** in the **Cartridge…** panel to upload a new version. each replacement makes a new
    Cartridge Version, and earlier versions can be rolled back to.
 
-to iterate, rebuild, repack and replace. or run `chittr-cartridge watch cartridge` and let it repack on every save.
+to iterate, rebuild, repack and replace. or run `chittr-cartridge watch cartridge` and let it repack on every save. the
+[cookbook](docs/cartridges/v1/cookbook.md#testing-on-chittr-previews-and-testers) has the whole workflow, with the logs to read when
+something breaks.
 
 ## Troubleshooting
 
 **cargo's build scripts fail to link on macOS.** some macOS setups point the build at the newest SDK, and the linker can't
-read it. if you see `tapi error: malformed file`, set `SDKROOT` to an older SDK. list the ones you have, then pick one:
+read it. if you see `tapi error: malformed file`, point `SDKROOT` at an older SDK. list the ones you have, then pick one:
 
 ```bash
 ls /Library/Developer/CommandLineTools/SDKs
-SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX<version>.sdk cargo build
+```
+
+the permanent fix is to set it once in `~/.cargo/config.toml`. cargo passes `[env]` to rustc, the build scripts and the
+linker, so `cargo build` and `cargo install` work from any shell with no export:
+
+```toml
+[env]
+SDKROOT = "/Library/Developer/CommandLineTools/SDKs/MacOSX<version>.sdk"
+```
+
+if u'd rather set it per shell, export it instead, and the build sees it the same way:
+
+```bash
+export SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX<version>.sdk
+cargo build
 ```
 
 don't use `xcrun --show-sdk-path` for this, cause it prints the default SDK, which can be the broken one. the build scripts
-(`scripts/build-examples.sh` and a new project's `build.sh`) never pick an SDK themselves, so `SDKROOT` goes in your
-environment and cargo sees it.
+(`scripts/build-examples.sh` and a new project's `build.sh`) never pick an SDK themselves, so the setting has to come from
+your environment or from cargo's config, and it reaches them both ways.
+
+if the error shows up with no SDK pinned at all, the toolchain is the likely cause. run `rustup update`, and update the
+Command Line Tools (`softwareupdate --list`, then install the one that matches your macOS). a newer toolchain often fixes it
+for good, and then the pin can go.
 
 ## Releases
 
@@ -152,12 +173,15 @@ git push origin vX.Y.Z
 the release workflow (`.github/workflows/release.yml`) builds the CLI in release mode for the five targets above, zips
 each one, and creates a GitHub release for the tag with the zips and `SHA256SUMS` attached. the release notes are the
 commit subjects since the previous tag. every push to `main` and every pull request runs the CI workflow
-(`.github/workflows/ci.yml`): fmt, clippy, the tests with the conformance corpus, every example built to wasm, and
-`chittr-cartridge check` on each example.
+(`.github/workflows/ci.yml`): fmt, clippy, the tests (the SDK's, including the `testing` feature, and the CLI's, with the
+conformance corpus), every example built to wasm, the poll's Hook tests, and `chittr-cartridge check` on each example.
 
 ## Documentation
 
 - [`docs/cartridges/v1/quickstart.md`](docs/cartridges/v1/quickstart.md): from an empty folder to a packed Cartridge.
+- [`docs/cartridges/v1/guide.md`](docs/cartridges/v1/guide.md): the SDK, piece by piece, and how to test Hooks natively.
+- [`docs/cartridges/v1/limits.md`](docs/cartridges/v1/limits.md): every limit an author runs into, with its number.
+- [`docs/cartridges/v1/cookbook.md`](docs/cartridges/v1/cookbook.md): recipes for polls, counters, timers, canvas games and testing on Chittr.
 - [`docs/cartridges/v1/abi.md`](docs/cartridges/v1/abi.md): the ABI, with every export, host function, draw op and limit.
 - [`docs/cartridges/v1/design.md`](docs/cartridges/v1/design.md): why the ABI is shaped the way it is.
 - [`docs/cartridges/v1/server.xtp.yaml`](docs/cartridges/v1/server.xtp.yaml) and
@@ -168,9 +192,9 @@ commit subjects since the previous tag. every push to `main` and every pull requ
 ```
 cli/                          the chittr-cartridge CLI, with its starter templates and tests
 conformance/                  the conformance corpus the CLI's validator is tested against
-sdk/chittr-cartridge          the guest SDK (Server Guests, and Canvas Guests with the `canvas` feature)
+sdk/chittr-cartridge          the guest SDK (Server Guests, Canvas Guests with the `canvas` feature, and the `testing` feature)
 sdk/chittr-cartridge-macros   the #[hook] attribute
-docs/cartridges/v1            the ABI, quickstart, design notes and schemas
+docs/cartridges/v1            the ABI, quickstart, guide, limits, cookbook, design notes and schemas
 examples/                     hello, poll, snake and paint
 scripts/build-examples.sh     builds every example to wasm
 scripts/package-release.sh    packages one release zip of the CLI
