@@ -1,0 +1,31 @@
+<section style="display: flex; flex-direction: column; gap: 12px; padding: 12px; border: 1px solid #555; border-radius: 8px">
+  <div>
+    <h3 style="margin: 0 0 4px 0">DOOM — card settings</h3>
+    <p style="margin: 0; font-size: 0.8rem; opacity: 0.8">Private to this Chitt's {{ viewerRole | escape }}. Changes affect new games; reload a running card to pick up a new difficulty.</p>
+  </div>
+  {% if configurationAllowed %}
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <p style="margin: 0; font-size: 0.85rem; font-weight: 700">Default difficulty: {{ selectedSkill | escape }}</p>
+    <p style="margin: 0; font-size: 0.8rem; opacity: 0.8">Players can still use DOOM's own menu after starting. Nightmare! leaves respawning enemies enabled.</p>
+    <div style="display: flex; flex-wrap: wrap; gap: 6px">
+      {% for option in skills %}
+      <button type="button" data-lc-control="set-skill" data-lc-value="{{ option.value | escape }}" aria-pressed="{{ option.selected }}" style="padding: 7px 9px; border: 1px solid {% if option.selected %}#d2462d{% else %}#555{% endif %}; border-radius: 5px; background-color: {% if option.selected %}#3a1f19{% else %}transparent{% endif %}; color: inherit; font-size: 0.78rem; font-weight: {% if option.selected %}800{% else %}500{% endif %}; cursor: pointer">{{ option.label | escape }}{% if option.selected %} · current{% endif %}</button>
+      {% endfor %}
+    </div>
+  </div>
+  {% if custom and viewerIsOwner %}
+  <div style="display: flex; flex-direction: column; gap: 5px; padding-top: 8px; border-top: 1px solid #555">
+    <button type="button" data-lc-control="reset-settings" data-lc-value="reset" style="align-self: flex-start; padding: 7px 9px; border: 1px solid #b66a61; border-radius: 5px; background-color: #44232a; color: #f5e4df; font-size: 0.78rem; font-weight: 700; cursor: pointer">Reset to {{ defaultSkill | escape }}</button>
+    <p style="margin: 0; font-size: 0.75rem; opacity: 0.75">Owner only. The host asks for confirmation before this runs.</p>
+  </div>
+  {% endif %}
+  <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid #555">
+    <p style="margin: 0; font-size: 0.8rem; font-weight: 700">Import settings</p>
+    <lc-file name="import-settings" target="server" accept=".json,application/json" max-bytes="4096" label="Import DOOM settings JSON"></lc-file>
+    <p style="margin: 0; font-size: 0.75rem; opacity: 0.75">A small JSON object, for example <code>{"skill":"nightmare"}</code> (up to {{ importLimit }} bytes). The WAD picker stays on the public card and never uploads game data.</p>
+  </div>
+  <p style="margin: 0; font-size: 0.75rem; opacity: 0.7">Configuration access: {{ requiredAudience | escape }}. You are signed in as the {{ viewerRole | escape }}.</p>
+  {% else %}
+  <p style="margin: 0; font-size: 0.85rem">The host did not grant configuration access for this view.</p>
+  {% endif %}
+</section>

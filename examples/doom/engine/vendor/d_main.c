@@ -41,6 +41,8 @@ boolean devparm, nomonsters, respawnparm, fastparm, drone;
 boolean singletics = true;
 skill_t startskill = sk_medium;
 int startepisode = 1, startmap = 1;
+/* Set by doom_boot before D_DoomMain; the host chooses the configured default. */
+extern int cartridge_start_skill;
 boolean autostart;
 FILE *debugfile;
 boolean advancedemo;
@@ -200,5 +202,5 @@ void D_DoomMain(void)
     HU_Init();
     ST_Init();
     I_InitGraphics();
-    G_InitNew(sk_medium,1,1);
+    G_InitNew((skill_t)cartridge_start_skill,1,1);
 }

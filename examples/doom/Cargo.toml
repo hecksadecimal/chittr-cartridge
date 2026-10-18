@@ -20,6 +20,10 @@ base64-serde = "0.7"
 base64 = "0.21"
 chittr-cartridge = { package = "chittr-cartridge-sdk", path = "../../sdk/chittr-cartridge" }
 
+[dev-dependencies]
+# The fake host the Server Guest's tests run against (`cargo test`).
+chittr-cartridge = { package = "chittr-cartridge-sdk", path = "../../sdk/chittr-cartridge", features = ["testing"] }
+
 [profile.release]
 opt-level = "s"
 lto = true

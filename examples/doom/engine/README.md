@@ -26,7 +26,7 @@ not grant any additional right to distribute game data.
 See [`doom.h`](doom.h) for exact declarations and key codes:
 
 ```c
-int doom_boot(const unsigned char *wad, int len); /* 0 success, -1 error */
+int doom_boot(const unsigned char *wad, int len, int skill); /* 0 success, -1 error */
 void doom_tick(void);                            /* one tic + draw */
 unsigned char *doom_pixels(void);                 /* 320*200 indices */
 unsigned char *doom_palette(void);                /* 768 RGB bytes */
@@ -36,8 +36,8 @@ const char *doom_error(void);                     /* empty, diagnostic, or quit 
 
 - **Single instance, boot once per process/module.** A failed boot consumes the
   instance too. Original global game state is not resettable or thread-safe.
-  `doom_boot` starts E1M1 at medium difficulty and renders the first frame; it
-  does not start an infinite loop or automatically play demos.
+  `doom_boot` starts E1M1 at the caller's `skill` (0 baby through 4 nightmare)
+  and renders the first frame; it does not start an infinite loop or play demos.
 - Borrowed WAD bytes must remain allocated and unchanged for the instance's
   lifetime. All engine allocation uses ordinary `malloc`/`calloc` calls; a wasm
   embedder can provide shared-allocator shims. There is no shutdown/free API.
@@ -157,10 +157,10 @@ ASAN=1 examples/doom/engine/tests/native-smoke.sh
 
 Verified on arm64 macOS/Apple clang, with the **16 MiB zone**:
 
-- All 12 structural rejection cases: null/negative/short input, bad magic, empty
+- All 13 structural rejection cases: null/negative/short input, bad skill, bad magic, empty
   or overflowing counts/directories, invalid/wrapping lump extents, missing data.
 - Native fatal tick-error unwinding, inert post-error calls, second-boot refusal.
-- Real E1M1 boot; same-tick menu taps; restart through original episode/skill
+- Real E1M1 boot at the configured skill; same-tick menu taps; restart through original episode/skill
   menus; queue-overflow key-up recovery; movement, turning, firing, F11 gamma;
   more than 500 tics; original F10/Y quit without terminating the host.
 - Full supplied PWAD, 14,445,628 bytes / 2,305 lumps, and the parent-generated
@@ -175,7 +175,7 @@ Verified on arm64 macOS/Apple clang, with the **16 MiB zone**:
 ## Patch inventory
 
 - `d_main.c`: replace command-line/filesystem startup; return after initialization;
-  direct E1M1 start; host-driven singletics; no net updates or blocking wipe loop;
+  direct E1M1 start at the configured skill; host-driven singletics; no net updates or blocking wipe loop;
   keep original display ordering and title/menu entry points without auto demos.
 - `d_net.c`: original tic-command storage plus explicit single-player setup only.
 - `w_wad.c`: validated borrowed-memory directory, lookup, reads, and zone caching;

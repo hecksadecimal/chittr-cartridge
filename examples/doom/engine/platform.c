@@ -25,6 +25,7 @@ static jmp_buf escape;
 #define DOOM_GUARD() 0
 #endif
 static int guarded, attempted, running, ticks;
+int cartridge_start_skill = 2;
 static char error_text[512];
 static byte rgb[768];
 /* Preserve event order (including press+release between ticks), then reconcile
@@ -36,9 +37,16 @@ void D_DoomTick(void);
 void D_ProcessEvents(void);
 void W_SetMemory(const byte *data,int len);
 
-int doom_boot(const unsigned char *wad,int len)
+int doom_boot(const unsigned char *wad,int len,int skill)
 {
     static char *argv[] = {"doom-cartridge", NULL};
+    if (skill < 0 || skill > 4)
+    {
+        if (!attempted) strcpy(error_text,"skill must be 0 to 4");
+        attempted = 1;
+        running = 0;
+        return -1;
+    }
     if (attempted)
     {
         if (!error_text[0]) strcpy(error_text,"doom_boot may only be called once");
@@ -48,6 +56,7 @@ int doom_boot(const unsigned char *wad,int len)
     attempted = 1;
     guarded = 1;
     if (DOOM_GUARD()) { guarded = 0; running = 0; return -1; }
+    cartridge_start_skill = skill;
     W_SetMemory(wad,len);
     myargc = 1; myargv = argv;
     D_DoomMain();

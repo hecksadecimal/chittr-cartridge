@@ -3,7 +3,7 @@
 use std::ffi::{c_char, c_int, CStr};
 
 unsafe extern "C" {
-    fn doom_boot(wad: *const u8, len: c_int) -> c_int;
+    fn doom_boot(wad: *const u8, len: c_int, skill: c_int) -> c_int;
     fn doom_tick();
     fn doom_pixels() -> *const u8;
     fn doom_palette() -> *const u8;
@@ -19,11 +19,12 @@ pub struct Engine {
 impl Engine {
     /// Boots the original engine over a WAD the viewer selected at runtime. The
     /// bytes are validated by the caller and retained here for the engine's lifetime.
-    pub fn boot(wad: Vec<u8>) -> Result<Self, String> {
+    /// `skill` is the original `skill_t` index (0–4), chosen by the owner's default.
+    pub fn boot(wad: Vec<u8>, skill: u8) -> Result<Self, String> {
         #[cfg(target_arch = "wasm32")]
         crate::allocator::init();
         // SAFETY: validated WAD, retained in self; engine boots once per module.
-        if unsafe { doom_boot(wad.as_ptr(), wad.len() as c_int) } != 0 {
+        if unsafe { doom_boot(wad.as_ptr(), wad.len() as c_int, skill.into()) } != 0 {
             return Err(last_error().unwrap_or_else(|| "DOOM initialization failed".into()));
         }
         Ok(Self { _wad: wad })
@@ -91,7 +92,7 @@ mod tests {
             return;
         };
         crate::wad::validate(&wad).expect("validate the locally supplied WAD");
-        let mut engine = Engine::boot(wad).expect("boot original engine");
+        let mut engine = Engine::boot(wad, 2).expect("boot original engine");
         let first = engine.image().0.to_vec();
         engine.key(0xad, true);
         for _ in 0..35 {

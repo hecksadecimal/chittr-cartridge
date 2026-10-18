@@ -61,9 +61,42 @@ mod exports {
     }
 
     #[no_mangle]
+    pub extern "C" fn on_control() -> i32 {
+        let ret = crate::on_control(try_input_json!())
+            .and_then(|x| extism_pdk::output(extism_pdk::Json(x)));
+
+        match ret {
+            Ok(()) => 0,
+            Err(e) => internal::return_error(e),
+        }
+    }
+
+    #[no_mangle]
+    pub extern "C" fn on_file() -> i32 {
+        let ret =
+            crate::on_file(try_input_json!()).and_then(|x| extism_pdk::output(extism_pdk::Json(x)));
+
+        match ret {
+            Ok(()) => 0,
+            Err(e) => internal::return_error(e),
+        }
+    }
+
+    #[no_mangle]
     pub extern "C" fn render() -> i32 {
         let ret =
             crate::render(try_input_json!()).and_then(|x| extism_pdk::output(extism_pdk::Json(x)));
+
+        match ret {
+            Ok(()) => 0,
+            Err(e) => internal::return_error(e),
+        }
+    }
+
+    #[no_mangle]
+    pub extern "C" fn render_config() -> i32 {
+        let ret = crate::render_config(try_input_json!())
+            .and_then(|x| extism_pdk::output(extism_pdk::Json(x)));
 
         match ret {
             Ok(()) => 0,

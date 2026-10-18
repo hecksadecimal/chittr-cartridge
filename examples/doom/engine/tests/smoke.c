@@ -48,9 +48,10 @@ int main(int argc,char **argv)
     uint32_t initial,level,moving,turning;
     int x,y,i;
     int tick_error = argc == 3 && !strcmp(argv[1],"--tick-error");
-    const char *wadpath = tick_error ? argv[2] : argc >= 2 ? argv[1] : "";
+    int skill_test = argc == 3 && !strcmp(argv[1],"--skill");
+    const char *wadpath = (tick_error || skill_test) ? argv[2] : argc >= 2 ? argv[1] : "";
     if (argc == 3 && !strcmp(argv[1],"--invalid")) return test_invalid_wad(argv[2]);
-    if (argc != 2 && !tick_error) { fprintf(stderr,"usage: %s path/to/doom1.wad\n",argv[0]); return 2; }
+    if (argc != 2 && !tick_error && !skill_test) { fprintf(stderr,"usage: %s path/to/doom1.wad\n",argv[0]); return 2; }
     f = fopen(wadpath,"rb");
     if (!f) { perror(argv[1]); return 2; }
     fseek(f,0,SEEK_END); len=ftell(f); rewind(f);
@@ -58,7 +59,14 @@ int main(int argc,char **argv)
     wad=malloc((size_t)len);
     if (!wad || fread(wad,1,(size_t)len,f)!=(size_t)len) return 2;
     fclose(f);
-    if (doom_boot(wad,(int)len)) fail("boot");
+    if (doom_boot(wad,(int)len,skill_test ? sk_nightmare : sk_medium)) fail("boot");
+    if (skill_test)
+    {
+        if (gameskill != sk_nightmare || gamestate != GS_LEVEL || !players[0].mo)
+            fail("boot did not honour the configured skill");
+        puts("PASS: boot honoured the configured skill");
+        return 0;
+    }
     if (tick_error)
     {
         G_DeferedPlayDemo("MISSING"); /* test-only internal fault during G_Ticker */

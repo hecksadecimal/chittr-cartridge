@@ -1,8 +1,24 @@
 {
   "v": 2,
   "name": "DOOM — first episode",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "capabilities": {
-    "canvas": { "require": ["files.client", "framebuffer.indexed8"] }
+    "server": { "require": ["files.server"] },
+    "canvas": {
+      "require": ["files.client"],
+      "optional": ["framebuffer.indexed8", "framebuffer.rgba8"]
+    }
+  },
+  "controls": {
+    "set-skill": {
+      "value": { "enum": ["baby", "easy", "medium", "hard", "nightmare"] },
+      "audience": "owner_or_admin",
+      "confirm": "Change the default difficulty for new DOOM games?"
+    },
+    "reset-settings": {
+      "value": { "enum": ["reset"] },
+      "audience": "owner_or_admin",
+      "confirm": "Reset DOOM's default difficulty to Hurt me plenty?"
+    }
   }
 }

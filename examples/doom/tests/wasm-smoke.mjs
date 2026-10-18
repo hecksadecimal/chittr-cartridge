@@ -115,7 +115,8 @@ await key('Space','down'); assert.equal(requests,0,'Space before click must not 
 await call('event',{type:'file',name:'wad',file:{id:HANDLE,filename:'doom1.wad',mimeType:'application/octet-stream',size:WAD.length}});
 await call('event',{type:'pointer',action:'down',x:10,y:10,width:320,height:200});
 await key('Space','down');
-await call('frame',{t:0,dt:0});
+// The file event only registers the handle; frames read the WAD in bounded chunks.
+for (let i = 0; i < 400 && !image; i++) await call('frame',{t:i*30,dt:30});
 assert(image, 'engine emitted an actual indexed framebuffer');
 const first = hash();
 await key('ArrowUp','down');

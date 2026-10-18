@@ -2,6 +2,7 @@
   <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px"><lc-author></lc-author><lc-menu></lc-menu></div>
   <h2 style="margin: 0">{{ title }}</h2>
   <p style="margin: 0">{{ status }}</p>
+  <p style="margin: 0; font-size: 0.8rem; opacity: 0.8">Default difficulty: {{ difficulty }}{% if difficultyCustom %} · set by the owner{% endif %}</p>
   <lc-file name="wad" target="client" accept=".wad" max-bytes="16777216" label="Choose your DOOM WAD"></lc-file>
   <lc-canvas width="320" height="200" fullscreen label="DOOM first-episode port. Choose your own WAD file above, then click the canvas and press Space to start. Arrows or W A S D move and turn; Space fires; F uses or opens doors; M opens the game menu. Keyboard required."></lc-canvas>
   <p style="margin: 0; font-size: 0.8rem; opacity: 0.8">Arrows / WASD: move &amp; turn · Space: fire · F: use · Shift: run · Q/E: strafe · Tab: map · M: menu · P: pause. Escape releases canvas focus.</p>

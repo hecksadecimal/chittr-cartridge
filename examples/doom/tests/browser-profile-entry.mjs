@@ -36,8 +36,12 @@ window.runDoomProfile = async ({ wasmUrl, frames = 80 }) => {
     capabilities:['files.client','framebuffer.indexed8'],
     limits:{maxFileBytes:16777216,maxFileReadBytes:65536,maxFileHandles:4,maxFileBytesPerCanvas:33554432,maxPickers:8,maxFramebufferPixels:1048576,maxPaletteEntries:256}});
   await event({type:'file',name:'wad',file:{id:'f_profile',filename:'doom1.wad',mimeType:'application/octet-stream',size:wad.length}});
-  await event({type:'pointer',action:'down'});await key('Space','down');await frame(0,0);await key('Space','up');
-  const bootMs=calls.find(c=>c.name==='frame').ms;
+  await event({type:'pointer',action:'down'});await key('Space','down');
+  // Loading is incremental: each frame reads a bounded number of WAD chunks.
+  const loadFrames=[];
+  for(let i=0;i<120;i++){await frame(i,i===0?0:1000/35);loadFrames.push(calls.at(-1).ms);}
+  await key('Space','up');
+  const bootMs=Math.max(...loadFrames);
   await key('ArrowUp','down');
   for(let i=1;i<=12;i++)await frame(i);
   const nativePixels=surface.getImageData(0,0,320,200).data;

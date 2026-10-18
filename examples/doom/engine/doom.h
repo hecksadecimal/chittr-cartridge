@@ -7,12 +7,14 @@ extern "C" {
 /* One engine instance per process/module. Input bytes must remain alive and
  * unchanged for its lifetime. Returns 0 on success, -1 on error. Boot once;
  * subsequent boots are rejected (the original engine has global state).
- * A failed boot also consumes the instance. Boots E1M1 at medium skill, with
- * shareware/episode-one rules even for a larger WAD. No files or sockets.
+ * A failed boot also consumes the instance. Skill is the original skill_t
+ * index (0 baby through 4 nightmare); the host chooses it from configuration.
+ * Boots E1M1 at that skill, with shareware/episode-one rules even for a larger
+ * WAD. No files or sockets.
  * Native errors/quit unwind to this API. Wasm quit stops safely after the
  * current tic; wasm fatal errors store a diagnostic then trap (no setjmp).
  * The wasm host must catch fatal-error traps. */
-int doom_boot(const unsigned char *wad, int len);
+int doom_boot(const unsigned char *wad, int len, int skill);
 /* Exactly one 1/35-second simulation tic and one draw; no wall-clock waits.
  * After an error or quit this is a no-op; inspect doom_error(). */
 void doom_tick(void);
