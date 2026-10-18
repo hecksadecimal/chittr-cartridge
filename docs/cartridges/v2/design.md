@@ -441,20 +441,24 @@ adding these keeps `v: 2`. nothing in D1–D7 depends on them.
 
 ---
 
-## D9. Relative pointer and PCM audio — Deferred
+## D9. Relative pointer and PCM audio — Shipped
 
-both are reserved as optional capabilities and will be specified when they ship, without a version break:
+both ship as optional capabilities within `v: 2`:
 
-- `input.relative-pointer`: a real host-owned click or key activation enters pointer lock; the guest cannot enter it on
-  its own. Deltas are coalesced and rate/size bounded, delivered only to the focused canvas, released on Escape, blur,
-  tab hiding, termination or user cancellation, with an explicit input-reset so held buttons and keys do not stick. No
-  global keyboard hooks, clipboard access or out-of-canvas coordinates.
-- `audio.pcm`: a small specified set of PCM formats, sample rates and channel counts, a bounded queue with explicit
-  backpressure/drop behaviour, behind the existing host speaker control and real-user unlock. No AudioContext,
-  microphone, device list or arbitrary worklet code.
+- `input.relative-pointer`: a real host-owned click on the focused canvas enters pointer lock; the guest cannot enter it
+  on its own. While locked, `pointer` events carry `relative: true`, `movementX`, `movementY` and `buttons`, with no
+  canvas coordinates. Deltas are coalesced to one event per frame and each axis is clamped to the effective
+  `maxRelativePointerDelta`. Lock is released on Escape, blur, tab hiding, termination or user cancellation, and the host
+  sends `input_reset` so held buttons and keys do not stick. No global keyboard hooks, clipboard access or out-of-canvas
+  coordinates.
+- `audio.pcm`: interleaved signed 16-bit little-endian PCM at 22050, 44100 or 48000 Hz, mono or stereo, written with
+  `audio_write` in chunks of at most 64 KiB. A bounded per-canvas queue (2 s) answers `accepted: false` when full;
+  `queuedMs` reports the depth. `audio_stop` clears it. Playback is behind the existing host speaker control and real-user
+  unlock; muting, pausing, hiding or terminating the canvas stops it. No AudioContext, microphone, device list or
+  arbitrary worklet code is exposed to the guest.
 
-DOOM's "no audio, no mouse aiming" state is the reason these are follow-ups rather than core: the port does not need
-them to prove the file and framebuffer work.
+DOOM's "no audio, no mouse aiming" state was the reason these were follow-ups rather than core; the capabilities are now
+available for a port to opt into.
 
 ---
 

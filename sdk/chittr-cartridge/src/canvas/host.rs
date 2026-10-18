@@ -28,6 +28,8 @@ mod imports {
         pub fn stop_sound(input: Json<StopSoundInput>) -> Json<HostReply>;
         pub fn file_read(input: Json<FileReadInput>) -> Json<FileReadReply>;
         pub fn file_close(input: Json<FileCloseInput>) -> Json<HostReply>;
+        pub fn audio_write(input: Json<AudioWriteInput>) -> Json<AudioWriteReply>;
+        pub fn audio_stop(input: Json<Empty>) -> Json<HostReply>;
     }
 }
 
@@ -125,6 +127,28 @@ pub struct FileReadReply {
 pub struct FileChunk {
     pub bytes: Vec<u8>,
     pub eof: bool,
+}
+
+/// The input of `audio_write` (v2): one interleaved s16le chunk, base64 encoded on the wire.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioWriteInput {
+    pub format: String,
+    pub sample_rate: u32,
+    pub channels: u8,
+    pub samples: String,
+}
+
+/// The reply of `audio_write` (v2): whether the chunk was queued, and the queue depth after it.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioWriteReply {
+    #[serde(default)]
+    pub accepted: bool,
+    #[serde(default)]
+    pub queued_ms: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<CanvasError>,
 }
 
 /// Largest buffer one `submit` may carry; the encoder checks the same limit before the call.
@@ -307,6 +331,36 @@ pub fn file_close(handle: &str) -> Result<(), CanvasError> {
         handle: handle.to_string(),
     };
     let reply = unsafe { imports::file_close(Json(input)) }
+        .map_err(|error| CanvasError::new("host", error.to_string()))?;
+    check(reply.0)
+}
+
+/// Queues one bounded chunk of interleaved s16le PCM (v2, `audio.pcm`). `accepted` is false when the host queue is
+/// full; `queued_ms` is the depth after the call.
+pub fn audio_write(
+    format: &str,
+    sample_rate: u32,
+    channels: u8,
+    samples: &[u8],
+) -> Result<AudioWriteReply, CanvasError> {
+    let input = AudioWriteInput {
+        format: format.to_string(),
+        sample_rate,
+        channels,
+        samples: STANDARD.encode(samples),
+    };
+    let reply = unsafe { imports::audio_write(Json(input)) }
+        .map_err(|error| CanvasError::new("host", error.to_string()))?
+        .0;
+    if let Some(error) = reply.error {
+        return Err(error);
+    }
+    Ok(reply)
+}
+
+/// Stops queued and playing PCM (v2, `audio.pcm`).
+pub fn audio_stop() -> Result<(), CanvasError> {
+    let reply = unsafe { imports::audio_stop(Json(Empty {})) }
         .map_err(|error| CanvasError::new("host", error.to_string()))?;
     check(reply.0)
 }

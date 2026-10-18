@@ -89,9 +89,10 @@ Input: `{ "type": string, ...fields }`. The types in v2:
 | `state` | `state` (the render's `canvas` value, or `null`) | the render changed, delivered while visible |
 | `resize` | `width`, `height`, `fullscreen` | the backing store changed size |
 | `visibility` | `visible` (boolean) | the canvas went off-screen or its tab hid (`false`), or came back (`true`) |
-| `pointer` | `action`, `x`, `y`, `width`, `height`, `pointerId`, `pointerType`, `buttons` | a pointer went down, moved, went up, or was cancelled (section 1.1) |
+| `pointer` | `action`, `x`, `y`, `width`, `height`, `pointerId`, `pointerType`, `buttons`; or `relative`, `movementX`, `movementY`, `buttons` for a pointer-locked mouse | a pointer went down, moved, went up, or was cancelled (section 1.1) |
 | `key` | `action`, `key`, `code` | a key went down or up, while the canvas has focus (section 1.1) |
 | `focus` / `blur` | none | the canvas gained or lost focus (section 1.1) |
+| `input_reset` | none | pointer lock ended or the host released input: clear held keys and buttons (section 1.1) |
 | `reply` | `reply` (any JSON), `seq` (when the message had one) | the answer to a `send`, on success (section 1.2) |
 | `error` | `code`, `message` (optional), `seq` (when the message had one), or `handle` (for a load) | a `send` failed, its answer was not usable (section 1.2), or an image or sound did not load (section 1.3) |
 | `image_loaded` | `handle`, `width`, `height` (device pixels) | an image from `load_image` is decoded and can be drawn (section 1.3) |
@@ -114,7 +115,15 @@ enter fullscreen itself (section 1.4).
   while the canvas has focus. The canvas is focusable (`tabindex`), a click focuses it, and Escape gives the focus back to
   the page; Escape is not delivered to the guest.
 - `focus` and `blur` are sent when focus moves in or out.
-- Wheel, clipboard and pointer lock are not delivered.
+- **Relative pointer.** With the `input.relative-pointer` capability, a real host-owned click on the focused canvas asks
+  the browser for pointer lock. The guest cannot request lock itself. While locked, `pointer` events have `relative: true`,
+  `movementX`, `movementY` and `buttons`, and no canvas coordinates; they are coalesced to one per frame and each axis is
+  clamped to the effective `maxRelativePointerDelta`. Lock ends on Escape, blur, a hidden tab, termination or user
+  cancellation; the host then sends `input_reset`, so held keys and buttons cannot stick. The host never adds global
+  keyboard hooks, clipboard access or coordinates outside the canvas.
+- `input_reset` is also sent when the host otherwise releases input. A guest that ignores it still gets `blur`; a game
+  should clear its held state on either.
+- Wheel and clipboard are not delivered.
 
 Example, a pointer release:
 
@@ -188,6 +197,8 @@ add `limit` (too many loads), `not_loaded` (the sound is still decoding), `load_
 | `stop_sound` | `{ "id": integer }` | `{}`, or `{ "error" }` | Stops one playback. An id that is not playing is a no-op. |
 | `file_read` | `{ "handle": string, "offset": integer, "length": integer }` | `{ "bytes": base64, "eof": boolean }`, or `{ "error" }` | Reads at most 64 KiB of a file a picker delivered (section 6). Clips at EOF. |
 | `file_close` | `{ "handle": string }` | `{}`, or `{ "error" }` | Releases a file handle early. Closing an unknown or already-closed handle is harmless. |
+| `audio_write` | `{ "format": "s16le", "sampleRate": integer, "channels": integer, "samples": base64 }` | `{ "accepted": boolean, "queuedMs": integer }`, or `{ "error" }` | Queues one bounded PCM chunk for the host's shared speaker. Only interleaved s16le at 22050, 44100 or 48000 Hz, mono or stereo. At most 64 KiB before encoding. `accepted` is false when the queue is full; `queuedMs` is the depth after the call. Muted or paused canvases drop the chunk. |
+| `audio_stop` | `{}` | `{}`, or `{ "error" }` | Stops queued and playing PCM for this canvas. Muting, pausing, hiding or terminating the canvas does the same. |
 
 Example, `measure_text`:
 
@@ -670,8 +681,8 @@ The initial vocabulary is closed:
 | `framebuffer.rgba8` | canvas | Present RGBA8 pixels with a destination rectangle (0x52) |
 | `framebuffer.indexed8` | canvas | Present indexed8 pixels with a palette and a destination rectangle (0x53) |
 | `clock.monotonic` | both | Reserved; not part of v2 yet |
-| `input.relative-pointer` | canvas | Reserved for a future addition |
-| `audio.pcm` | canvas | Reserved for a future addition |
+| `input.relative-pointer` | canvas | Host-owned pointer lock with coalesced relative mouse deltas and `input_reset` |
+| `audio.pcm` | canvas | Queue interleaved s16le PCM through the host speaker with bounded backpressure |
 
 **Discovery.** The effective capability list and effective limits are delivered once per instance: `init` for a Server Guest
 and `start` for a Canvas Guest. They are stable for the life of the Cartridge Version, so a guest reads them there rather
@@ -702,6 +713,9 @@ than hard-coding them. A capability's host functions are usable only when the ca
 | Live client file handles per canvas | 4 | a new selection is refused (`limit`) |
 | Aggregate client file bytes per canvas | 32 MiB | a new selection is refused (`limit`) |
 | One `file_read` | 64 KiB | `too_large` |
+| One `audio_write` | 64 KiB of PCM before base64 | `too_large` |
+| PCM queued per canvas | 2 s | `audio_write` answers `accepted: false` |
+| Relative-pointer movement | 2,000 px per axis per coalesced frame | clamped by the host |
 | File pickers per template | 8, uniquely named | refused at upload |
 | `accept` entries | 16, each ≤ 64 characters | refused at upload |
 | Framebuffer source pixels per blit (`w × h`) | 1,048,576 | malformed |
@@ -721,6 +735,8 @@ guest reads them rather than hard-coding them.
 - **v1**: the original exports, host functions, command buffer and draw-op table. Unchanged, and still valid on a v2 host.
 - **v2**: adds `on_file` and `render_config` Hooks; `file_read` and `file_close`; the `file` canvas event and `<lc-file>`
   Host Part; draw ops 0x52 `blitRgbaScaled` and 0x53 `blitIndexedScaled`; the capability manifest and its discovery on
-  `init`/`start`; the `surface` field on `on_control`; and the optional `templates/config.liquid` surface. It incorporates
+  `init`/`start`; the `surface` field on `on_control`; and the optional `templates/config.liquid` surface. The shipped
+  capability additions are `input.relative-pointer` (the `relative` pointer event and `input_reset`) and `audio.pcm`
+  (`audio_write` and `audio_stop`); both keep `v: 2`. It incorporates
   every v1 export, host function, draw op, envelope, limit and deadline unchanged. An addition within v2 (a new opcode,
   event, host function, Hook or capability) keeps `v: 2`. A change to an existing byte or shape needs a new `v`.

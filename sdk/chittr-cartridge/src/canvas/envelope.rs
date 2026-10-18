@@ -90,6 +90,9 @@ pub struct CanvasLimits {
     pub max_pickers: u32,
     pub max_framebuffer_pixels: u32,
     pub max_palette_entries: u32,
+    pub max_relative_pointer_delta: u32,
+    pub max_pcm_chunk_bytes: u32,
+    pub pcm_queue_ms: u32,
 }
 
 /// Input to `frame`: the frame's time in ms since the page's time origin, and the time since the last frame.
@@ -121,7 +124,34 @@ pub struct FileRef {
     pub size: u64,
 }
 
+/// A pointer-locked mouse's coalesced movement (ABI v2, `input.relative-pointer`). The deltas are already clamped by
+/// the host; there are no canvas coordinates.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelativePointer {
+    pub movement_x: f64,
+    pub movement_y: f64,
+    pub buttons: u32,
+}
+
 impl EventInput {
+    /// The relative movement of a pointer-locked mouse, or `None` for an absolute pointer or another event.
+    pub fn relative_pointer(&self) -> Option<RelativePointer> {
+        if self.kind != "pointer" || self.rest.get("relative") != Some(&Value::Bool(true)) {
+            return None;
+        }
+        Some(RelativePointer {
+            movement_x: self.rest.get("movementX")?.as_f64()?,
+            movement_y: self.rest.get("movementY")?.as_f64()?,
+            buttons: self.rest.get("buttons").and_then(Value::as_u64).unwrap_or(0) as u32,
+        })
+    }
+
+    /// Whether this is the host's `input_reset` notification (ABI v2). A guest should clear held keys and buttons.
+    pub fn input_reset(&self) -> bool {
+        self.kind == "input_reset"
+    }
+
     /// The picker name and file metadata of a `file` event, or `None` for any other event.
     pub fn file(&self) -> Option<(String, FileRef)> {
         if self.kind != "file" {

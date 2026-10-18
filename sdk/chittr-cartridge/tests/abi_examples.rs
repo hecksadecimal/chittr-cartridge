@@ -9,6 +9,7 @@
 #![cfg(all(feature = "server", feature = "canvas"))]
 
 use chittr_cartridge::canvas::envelope as canvas;
+use chittr_cartridge::canvas::host as canvas_host;
 use chittr_cartridge::envelope::*;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -107,4 +108,6 @@ fn canvas_envelopes_round_trip() {
     round_trip::<canvas::EventInput>("canvas-examples.json", "CanvasEventInput");
     round_trip::<canvas::CanvasLimits>("canvas-examples.json", "CanvasLimits");
     round_trip::<canvas::FileRef>("canvas-examples.json", "FileRef");
+    round_trip::<canvas_host::AudioWriteInput>("canvas-examples.json", "AudioWriteInput");
+    round_trip::<canvas_host::AudioWriteReply>("canvas-examples.json", "AudioWriteOutput");
 }

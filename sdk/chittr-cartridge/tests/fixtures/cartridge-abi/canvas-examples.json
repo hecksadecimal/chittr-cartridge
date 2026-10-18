@@ -81,7 +81,10 @@
         "maxFileBytesPerCanvas": 33554432,
         "maxPickers": 8,
         "maxFramebufferPixels": 1048576,
-        "maxPaletteEntries": 256
+        "maxPaletteEntries": 256,
+        "maxRelativePointerDelta": 2000,
+        "maxPcmChunkBytes": 65536,
+        "pcmQueueMs": 2000
       }
     }
   ],
@@ -183,6 +186,17 @@
         "mimeType": "application/octet-stream",
         "size": 14445628
       }
+    },
+    {
+      "type": "pointer",
+      "relative": true,
+      "movementX": 1.5,
+      "movementY": -2,
+      "pointerType": "mouse",
+      "buttons": 0
+    },
+    {
+      "type": "input_reset"
     }
   ],
   "SetFpsInput": [
@@ -274,7 +288,10 @@
       "maxFileBytesPerCanvas": 33554432,
       "maxPickers": 8,
       "maxFramebufferPixels": 1048576,
-      "maxPaletteEntries": 256
+      "maxPaletteEntries": 256,
+      "maxRelativePointerDelta": 2000,
+      "maxPcmChunkBytes": 65536,
+      "pcmQueueMs": 2000
     }
   ],
   "FileRef": [
@@ -283,6 +300,24 @@
       "filename": "doom1.wad",
       "mimeType": "application/octet-stream",
       "size": 14445628
+    }
+  ],
+  "AudioWriteInput": [
+    {
+      "format": "s16le",
+      "sampleRate": 44100,
+      "channels": 2,
+      "samples": "AAAA"
+    }
+  ],
+  "AudioWriteOutput": [
+    {
+      "accepted": true,
+      "queuedMs": 0
+    },
+    {
+      "accepted": false,
+      "queuedMs": 2000
     }
   ]
 }

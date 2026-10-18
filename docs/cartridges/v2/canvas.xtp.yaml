@@ -117,6 +117,19 @@ imports:
     output:
       contentType: application/json
       $ref: "#/components/schemas/FileCloseOutput"
+  audio_write:
+    description: Queues one bounded chunk of interleaved signed 16-bit little-endian PCM for the host's shared speaker. The queue is bounded; accepted is false when it is full, and queuedMs reports the depth after the call. PCM is dropped while the canvas is muted or paused.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/AudioWriteInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/AudioWriteOutput"
+  audio_stop:
+    description: Stops queued and playing PCM for this canvas. Muting, pausing, hiding or terminating the canvas does the same.
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasHostReply"
 components:
   schemas:
     HookError:
@@ -138,7 +151,7 @@ components:
         error:
           $ref: "#/components/schemas/HookError"
     CanvasErrorCode:
-      description: Why a host function failed. send reports busy and too_large; the media functions report busy, limit, not_loaded and load_failed; the file functions report not_found, too_large and not_supported.
+      description: Why a host function failed. send reports busy and too_large; the media functions report busy, limit, not_loaded and load_failed; the file and PCM functions report not_found, too_large and not_supported.
       type: string
       enum:
         - not_running
@@ -239,8 +252,9 @@ components:
         - image_loaded
         - sound_loaded
         - file
+        - input_reset
     CanvasEventInput:
-      description: Input to event. Type says which event it is, and only the fields that event describes are present. state carries state; resize carries width, height and fullscreen; visibility carries visible; pointer carries action (down, move, up or cancel), x, y, width, height, pointerId, pointerType (mouse, touch or pen) and buttons; key carries action (down or up), key and code; focus and blur carry nothing; reply carries reply and seq; error carries handle (for a load), code, message and seq; image_loaded carries handle, width and height; sound_loaded carries handle; file carries name and file.
+      description: Input to event. Type says which event it is, and only the fields that event describes are present. state carries state; resize carries width, height and fullscreen; visibility carries visible; pointer carries action (down, move, up or cancel); an absolute pointer carries x, y, width, height, pointerId, pointerType (mouse, touch or pen) and buttons, while a pointer-locked mouse carries relative true, movementX, movementY and buttons and no canvas coordinates; key carries action (down or up), key and code; focus, blur and input_reset carry nothing; reply carries reply and seq; error carries handle (for a load), code, message and seq; image_loaded carries handle, width and height; sound_loaded carries handle; file carries name and file.
       required:
         - type
       properties:
@@ -286,6 +300,17 @@ components:
           type: integer
           format: int32
           description: The DOM button bitmask, for a pointer event.
+        relative:
+          type: boolean
+          description: True for a pointer-locked mouse's movement. The event then has movementX and movementY instead of canvas coordinates.
+        movementX:
+          type: number
+          format: double
+          description: The horizontal movement since the previous coalesced frame, clamped by the host.
+        movementY:
+          type: number
+          format: double
+          description: The vertical movement since the previous coalesced frame, clamped by the host.
         key:
           type: string
           description: The DOM key, for a key event, at most 32 characters.
@@ -436,6 +461,9 @@ components:
         - maxPickers
         - maxFramebufferPixels
         - maxPaletteEntries
+        - maxRelativePointerDelta
+        - maxPcmChunkBytes
+        - pcmQueueMs
       properties:
         maxFileBytes:
           type: integer
@@ -465,6 +493,18 @@ components:
           type: integer
           format: int32
           description: The largest palette an indexed blit may carry.
+        maxRelativePointerDelta:
+          type: integer
+          format: int32
+          description: The largest relative-pointer movement one coalesced frame may carry, per axis.
+        maxPcmChunkBytes:
+          type: integer
+          format: int32
+          description: The largest audio_write chunk, in PCM bytes before base64.
+        pcmQueueMs:
+          type: integer
+          format: int32
+          description: PCM queued ahead of playback, in milliseconds. audio_write answers accepted false past it.
     FileRef:
       description: Metadata for a client-local file the host delivered. The id is an opaque handle scoped to this canvas instance; the file's bytes are never part of a JSON envelope.
       required:
@@ -551,3 +591,39 @@ components:
       properties:
         error:
           $ref: "#/components/schemas/FileError"
+    AudioWriteInput:
+      description: Input to audio_write. Only interleaved signed 16-bit little-endian PCM is accepted. samples is the PCM bytes base64 encoded, at most 64 KiB before encoding.
+      required:
+        - format
+        - sampleRate
+        - channels
+        - samples
+      properties:
+        format:
+          type: string
+          description: The sample format. Only s16le.
+        sampleRate:
+          type: integer
+          format: int32
+          description: Samples per second. One of 22050, 44100 or 48000.
+        channels:
+          type: integer
+          format: int32
+          description: 1 for mono, 2 for stereo.
+        samples:
+          type: string
+          format: byte
+          description: Interleaved s16le frames, base64 encoded. The byte length must be a whole number of frames.
+    AudioWriteOutput:
+      description: Output of audio_write. accepted is false when the host queue is full; queuedMs is the queue depth after the call.
+      required: []
+      properties:
+        accepted:
+          type: boolean
+          description: Whether the chunk was queued. False means the guest should wait and retry.
+        queuedMs:
+          type: integer
+          format: int64
+          description: PCM queued ahead of playback, in milliseconds, after the call.
+        error:
+          $ref: "#/components/schemas/CanvasError"
