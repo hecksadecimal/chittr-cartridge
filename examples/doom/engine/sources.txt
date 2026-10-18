@@ -54,3 +54,9 @@ vendor/s_sound.c
 vendor/z_zone.c
 vendor/info.c
 vendor/sounds.c
+opl_compat.c
+vendor/chocolate/memio.c
+vendor/chocolate/mus2mid.c
+vendor/chocolate/midifile.c
+vendor/chocolate/i_oplmusic.c
+vendor/chocolate/opl3.c

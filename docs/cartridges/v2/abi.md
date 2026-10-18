@@ -64,7 +64,7 @@ Input:
   "state": { "bars": [{ "label": "Pepperoni", "votes": 42 }] },
   "fullscreen": false,
   "capabilities": ["files.client", "framebuffer.indexed8"],
-  "limits": { "maxFileBytes": 16777216, "maxFileReadBytes": 65536, "maxFileHandles": 4, "maxFileBytesPerCanvas": 33554432, "maxPickers": 8, "maxFramebufferPixels": 1048576, "maxPaletteEntries": 256 }
+  "limits": { "maxFileBytes": 33554432, "maxFileReadBytes": 65536, "maxFileHandles": 4, "maxFileBytesPerCanvas": 41943040, "maxPickers": 8, "maxFramebufferPixels": 1048576, "maxPaletteEntries": 256 }
 }
 ```
 
@@ -538,7 +538,7 @@ routing; the guest never sees a file dialog, a path or the file's bytes in JSON.
   name="wad"
   target="client"
   accept=".wad"
-  max-bytes="16777216"
+  max-bytes="33554432"
   label="Choose your local WAD">
 </lc-file>
 ```
@@ -551,6 +551,9 @@ template; a duplicate is refused at upload.
 - `max-bytes` is optional: a positive integer that may lower, never raise, the host cap (section 9). An absent value means
   the host cap. A value above the host cap is clamped at render, so a template stays portable.
 - `label` is optional plain text, at most 200 characters, used by the host-owned input's accessible label.
+- `asset` is optional: a file path under `assets/` (with or without the `assets/` prefix), requiring `target="client"`.
+  The host renders a button instead of a file input and fetches that Cartridge asset, delivering it through the same
+  client routing. It is how a card can offer a WAD the Cartridge itself ships, such as Freedoom.
 
 The element is a leaf: template children, arbitrary attributes, script and event handlers are dropped by the sanitizer, and
 both the upload validator and the client renderer check the attributes. Arbitrary `<input type="file">` markup stays
@@ -693,6 +696,7 @@ than hard-coding them. A capability's host functions are usable only when the ca
 | Limit | Value | Enforced by |
 | --- | --- | --- |
 | `canvas.wasm` size | 4 MiB | upload |
+| One Cartridge asset under `assets/` | 32 MiB | upload |
 | Declared memory maximum | 64 MiB (1024 pages) | upload; the host caps it at instantiation |
 | Ready after start | 5 s | host watchdog; crash `startup` |
 | Each `start`, `frame`, `event` call, or snapshot | 250 ms | host watchdog; crash `timeout` |
@@ -709,9 +713,9 @@ than hard-coding them. A capability's host functions are usable only when the ca
 | Images and sounds per canvas | 32 of each | worker (`load_image`, `load_sound`) |
 | Decoded image side | 4096 px | page (`too_large` error) |
 | Sounds playing at once | 8 | worker (`play_sound` answers `busy`) |
-| One selected file | 16 MiB; a template may lower it | picker, before reading |
+| One selected file | 32 MiB; a template may lower it | picker, before reading |
 | Live client file handles per canvas | 4 | a new selection is refused (`limit`) |
-| Aggregate client file bytes per canvas | 32 MiB | a new selection is refused (`limit`) |
+| Aggregate client file bytes per canvas | 40 MiB | a new selection is refused (`limit`) |
 | One `file_read` | 64 KiB | `too_large` |
 | One `audio_write` | 64 KiB of PCM before base64 | `too_large` |
 | PCM queued per canvas | 2 s | `audio_write` answers `accepted: false` |

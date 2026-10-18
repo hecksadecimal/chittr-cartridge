@@ -186,13 +186,20 @@ void D_AddFile(char *file) { (void)file; }
 
 void D_DoomMain(void)
 {
-    /* WAD directory is already bounds-checked by doom_boot. This first
-       cartridge milestone deliberately exposes only DOOM episode one. */
+    /* WAD directories are bounds-checked by doom_boot before this runs. Base
+       and mod WADs are combined; later WADs override earlier lumps. */
     V_Init();
     M_LoadDefaults();
     Z_Init();
     W_InitMultipleFiles(wadfiles);
-    gamemode = shareware;
+    if (W_CheckNumForName("MAP01") >= 0)
+        gamemode = commercial;
+    else if (W_CheckNumForName("E4M1") >= 0 && W_CheckNumForName("M_EPI4") >= 0)
+        gamemode = retail;
+    else if (W_CheckNumForName("E2M1") >= 0 || W_CheckNumForName("E3M1") >= 0)
+        gamemode = registered;
+    else
+        gamemode = shareware;
     M_Init();
     R_Init();
     P_Init();

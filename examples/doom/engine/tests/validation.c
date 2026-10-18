@@ -15,6 +15,8 @@ int test_invalid_wad(const char *which)
 {
     unsigned char data[64] = {0};
     const unsigned char *input = data;
+    const unsigned char *wads[1] = { data };
+    int lengths[1] = { (int)sizeof(data) };
     const char *expected = "";
     int len = sizeof(data);
     memcpy(data,"PWAD",4);
@@ -22,7 +24,7 @@ int test_invalid_wad(const char *which)
     memcpy(data+20,"TITLEPIC",8);
     if (!strcmp(which,"skill"))
     {
-        if (doom_boot(data,(int)sizeof(data),5) != -1 || !strstr(doom_error(),"skill") || doom_pixels())
+        if (doom_boot(wads,lengths,1,5) != -1 || !strstr(doom_error(),"skill") || doom_pixels())
         {
             fprintf(stderr,"FAIL reject skill: %s\n",doom_error());
             return 1;
@@ -43,14 +45,15 @@ int test_invalid_wad(const char *which)
     else if (!strcmp(which,"sizewrap")) { put32(data+16,0xffffffffu); expected="lump 0 outside"; }
     else if (!strcmp(which,"incomplete")) { expected="incomplete game data"; }
     else { fprintf(stderr,"unknown invalid test %s\n",which); return 2; }
-    if (doom_boot(input,len,2) != -1 || !strstr(doom_error(),expected) || doom_pixels())
+    wads[0] = input; lengths[0] = len;
+    if (doom_boot(wads,lengths,1,2) != -1 || !strstr(doom_error(),expected) || doom_pixels())
     {
         fprintf(stderr,"FAIL reject %s: %s\n",which,doom_error());
         return 1;
     }
     doom_tick(); /* error state is inert, not an exit/trap */
     doom_key(0,1);
-    if (doom_boot(input,len,2) != -1)
+    if (doom_boot(wads,lengths,1,2) != -1)
     {
         fprintf(stderr,"FAIL: second boot allowed\n");
         return 1;

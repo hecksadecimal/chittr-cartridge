@@ -22,8 +22,19 @@
 lumpinfo_t *lumpinfo;
 int numlumps;
 void **lumpcache;
-static const byte *wadbytes;
-static size_t wadlength;
+
+/* In-memory WAD sources. The base is index 0; each mod appends. Lump lookup
+ * walks the combined list from the end, so a later WAD overrides an earlier one. */
+#define WAD_MAX 8
+typedef struct
+{
+    const byte *data;
+    size_t length;
+    uint32_t count;
+    uint32_t directory;
+} memorywad_t;
+static memorywad_t memorywads[WAD_MAX];
+static int memorywadcount;
 
 static uint32_t le32(const byte *p)
 {
@@ -32,7 +43,7 @@ static uint32_t le32(const byte *p)
 }
 /* Validate the entire directory before allocating or exposing engine data.
  * Zero-length marker lumps may legally have offset 0 or EOF. */
-void W_SetMemory(const byte *data, int len)
+static void add_memory_wad(const byte *data, int len)
 {
     uint32_t count, dir, i;
     if (!data || len < 12) I_Error("WAD: truncated header");
@@ -50,31 +61,58 @@ void W_SetMemory(const byte *data, int len)
         if (pos > (uint32_t)len || size > (uint32_t)len-pos)
             I_Error("WAD: lump %u outside buffer", (unsigned)i);
     }
-    wadbytes = data;
-    wadlength = (size_t)len;
+    if (memorywadcount >= WAD_MAX)
+        I_Error("WAD: at most %d files", WAD_MAX);
+    memorywads[memorywadcount].data = data;
+    memorywads[memorywadcount].length = (size_t)len;
+    memorywads[memorywadcount].count = count;
+    memorywads[memorywadcount].directory = dir;
+    ++memorywadcount;
+}
+void W_SetMemory(const byte *data, int len)
+{
+    memorywadcount = 0;
+    add_memory_wad(data, len);
+}
+void W_AddMemory(const byte *data, int len)
+{
+    add_memory_wad(data, len);
 }
 void W_InitMultipleFiles(char **filenames)
 {
-    uint32_t dir;
-    int i;
+    int i, w, total;
     (void)filenames;
-    if (!wadbytes) I_Error("WAD: no in-memory data");
-    numlumps = (int)le32(wadbytes+4);
-    dir = le32(wadbytes+8);
+    if (memorywadcount == 0) I_Error("WAD: no in-memory data");
+    total = 0;
+    for (w=0; w<memorywadcount; ++w)
+    {
+        if (memorywads[w].count > (uint32_t)(INT_MAX - total))
+            I_Error("WAD: too many lumps");
+        total += (int)memorywads[w].count;
+    }
+    numlumps = total;
     lumpinfo = calloc((size_t)numlumps, sizeof(*lumpinfo));
     lumpcache = calloc((size_t)numlumps, sizeof(*lumpcache));
     if (!lumpinfo || !lumpcache) I_Error("WAD: directory allocation failed");
-    for (i=0; i<numlumps; ++i)
+    i = 0;
+    for (w=0; w<memorywadcount; ++w)
     {
-        const byte *entry = wadbytes+dir+(size_t)i*16;
-        lumpinfo[i].position = (int)le32(entry);
-        lumpinfo[i].size = (int)le32(entry+4);
-        memcpy(lumpinfo[i].name, entry+8, 8);
+        uint32_t j;
+        const byte *dir = memorywads[w].data + memorywads[w].directory;
+        for (j=0; j<memorywads[w].count; ++j, ++i)
+        {
+            const byte *entry = dir + (size_t)j*16;
+            lumpinfo[i].handle = 0;
+            lumpinfo[i].wad = w;
+            lumpinfo[i].position = (int)le32(entry);
+            lumpinfo[i].size = (int)le32(entry+4);
+            memcpy(lumpinfo[i].name, entry+8, 8);
+        }
     }
     if (W_CheckNumForName("PLAYPAL") < 0 ||
         W_CheckNumForName("TITLEPIC") < 0 ||
-        W_CheckNumForName("E1M1") < 0)
-        I_Error("WAD: incomplete game data (PLAYPAL, TITLEPIC, E1M1)");
+        (W_CheckNumForName("E1M1") < 0 && W_CheckNumForName("MAP01") < 0))
+        I_Error("WAD: incomplete game data (PLAYPAL, TITLEPIC, E1M1 or MAP01)");
     if (W_LumpLength(W_GetNumForName("PLAYPAL")) < 14*768)
         I_Error("WAD: PLAYPAL must contain 14 palettes");
 }
@@ -107,12 +145,16 @@ int W_LumpLength(int lump)
 void W_ReadLump(int lump, void *dest)
 {
     lumpinfo_t *l;
+    memorywad_t *w;
     W_LumpLength(lump);
     l = &lumpinfo[lump];
-    if ((size_t)l->position > wadlength ||
-        (size_t)l->size > wadlength-(size_t)l->position)
+    if (l->wad < 0 || l->wad >= memorywadcount)
+        I_Error("W_ReadLump: invalid WAD source");
+    w = &memorywads[l->wad];
+    if ((size_t)l->position > w->length ||
+        (size_t)l->size > w->length-(size_t)l->position)
         I_Error("W_ReadLump: invalid bounds");
-    memcpy(dest, wadbytes+l->position, (size_t)l->size);
+    memcpy(dest, w->data+l->position, (size_t)l->size);
 }
 void *W_CacheLumpNum(int lump, int tag)
 {

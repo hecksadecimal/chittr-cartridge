@@ -13,6 +13,7 @@ fn main() {
     // the card's <lc-file> picker, so no game data is embedded in the wasm.
     let mut c = cc::Build::new();
     c.include(engine.join("vendor"))
+        .include(engine.join("vendor/chocolate"))
         .include(&engine)
         .flag("-include")
         .flag(engine.join("portable.h").to_str().unwrap())

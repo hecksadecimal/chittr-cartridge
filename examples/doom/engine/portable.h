@@ -8,6 +8,10 @@
 #include <string.h>
 #include <limits.h>
 #include <math.h>
+
+#ifndef PACKED_STRUCT
+#define PACKED_STRUCT(...) struct __attribute__((packed)) __VA_ARGS__
+#endif
 /* Keep engine startup/debug text entirely local: no stdout/stderr descriptor IO.
  * Host-only native test translation units undefine these after this header. */
 #define printf(...) ((int)0)

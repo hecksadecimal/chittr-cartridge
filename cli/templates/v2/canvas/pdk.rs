@@ -96,6 +96,63 @@ pub mod types {
         extism_pdk::ToBytes,
     )]
     #[encoding(Json)]
+    pub struct AudioWriteInput {
+        /// 1 for mono, 2 for stereo.
+        #[serde(rename = "channels")]
+        pub channels: i32,
+
+        /// The sample format. Only s16le.
+        #[serde(rename = "format")]
+        pub format: String,
+
+        /// Samples per second. One of 22050, 44100 or 48000.
+        #[serde(rename = "sampleRate")]
+        pub sample_rate: i32,
+
+        /// Interleaved s16le frames, base64 encoded. The byte length must be a whole number of frames.
+        #[serde(rename = "samples")]
+        pub samples: String,
+    }
+
+    #[derive(
+        Default,
+        Debug,
+        Clone,
+        serde::Serialize,
+        serde::Deserialize,
+        extism_pdk::FromBytes,
+        extism_pdk::ToBytes,
+    )]
+    #[encoding(Json)]
+    pub struct AudioWriteOutput {
+        /// Whether the chunk was queued. False means the guest should wait and retry.
+        #[serde(rename = "accepted")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
+        pub accepted: Option<bool>,
+
+        #[serde(rename = "error")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
+        pub error: Option<types::CanvasError>,
+
+        /// PCM queued ahead of playback, in milliseconds, after the call.
+        #[serde(rename = "queuedMs")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
+        pub queued_ms: Option<i64>,
+    }
+
+    #[derive(
+        Default,
+        Debug,
+        Clone,
+        serde::Serialize,
+        serde::Deserialize,
+        extism_pdk::FromBytes,
+        extism_pdk::ToBytes,
+    )]
+    #[encoding(Json)]
     pub struct CanvasError {
         #[serde(rename = "code")]
         pub code: types::CanvasErrorCode,
@@ -203,6 +260,18 @@ pub mod types {
         #[serde(default)]
         pub message: Option<String>,
 
+        /// The horizontal movement since the previous coalesced frame, clamped by the host.
+        #[serde(rename = "movementX")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
+        pub movement_x: Option<f64>,
+
+        /// The vertical movement since the previous coalesced frame, clamped by the host.
+        #[serde(rename = "movementY")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
+        pub movement_y: Option<f64>,
+
         /// The picker name, for a file event.
         #[serde(rename = "name")]
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -220,6 +289,12 @@ pub mod types {
         #[serde(skip_serializing_if = "Option::is_none")]
         #[serde(default)]
         pub pointer_type: Option<String>,
+
+        /// True for a pointer-locked mouse's movement. The event then has movementX and movementY instead of canvas coordinates.
+        #[serde(rename = "relative")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
+        pub relative: Option<bool>,
 
         /// The answer to a send, for a reply event. XTP has no untyped value, so this is typed as an object; the host passes any JSON.
         #[serde(rename = "reply")]
@@ -303,6 +378,8 @@ pub mod types {
         Sound_loaded,
         #[serde(rename = "file")]
         File,
+        #[serde(rename = "input_reset")]
+        Input_reset,
     }
 
     #[derive(
@@ -377,9 +454,21 @@ pub mod types {
         #[serde(rename = "maxPaletteEntries")]
         pub max_palette_entries: i32,
 
+        /// The largest audio_write chunk, in PCM bytes before base64.
+        #[serde(rename = "maxPcmChunkBytes")]
+        pub max_pcm_chunk_bytes: i32,
+
         /// The file pickers allowed per template.
         #[serde(rename = "maxPickers")]
         pub max_pickers: i32,
+
+        /// The largest relative-pointer movement one coalesced frame may carry, per axis.
+        #[serde(rename = "maxRelativePointerDelta")]
+        pub max_relative_pointer_delta: i32,
+
+        /// PCM queued ahead of playback, in milliseconds. audio_write answers accepted false past it.
+        #[serde(rename = "pcmQueueMs")]
+        pub pcm_queue_ms: i32,
     }
 
     #[derive(
@@ -833,6 +922,12 @@ mod raw_imports {
     #[host_fn]
     extern "ExtismHost" {
 
+        pub(crate) fn audio_stop() -> Json<types::CanvasHostReply>;
+
+        pub(crate) fn audio_write(
+            input: Json<types::AudioWriteInput>,
+        ) -> Json<types::AudioWriteOutput>;
+
         pub(crate) fn file_close(
             input: Json<types::FileCloseInput>,
         ) -> Json<types::FileCloseOutput>;
@@ -868,6 +963,31 @@ mod raw_imports {
         pub(crate) fn submit(input: Vec<u8>);
 
     }
+}
+
+/// audio_stop Stops queued and playing PCM for this canvas. Muting, pausing, hiding or terminating the canvas does the same.
+/// And it returns an output types::CanvasHostReply ()
+#[allow(unused)]
+pub(crate) fn audio_stop() -> std::result::Result<types::CanvasHostReply, extism_pdk::Error> {
+    let res = unsafe { raw_imports::audio_stop()? };
+
+    let extism_pdk::Json(res) = res;
+
+    Ok(res)
+}
+
+/// audio_write Queues one bounded chunk of interleaved signed 16-bit little-endian PCM for the host's shared speaker. The queue is bounded; accepted is false when it is full, and queuedMs reports the depth after the call. PCM is dropped while the canvas is muted or paused.
+/// It takes input of types::AudioWriteInput ()
+/// And it returns an output types::AudioWriteOutput ()
+#[allow(unused)]
+pub(crate) fn audio_write(
+    input: types::AudioWriteInput,
+) -> std::result::Result<types::AudioWriteOutput, extism_pdk::Error> {
+    let res = unsafe { raw_imports::audio_write(extism_pdk::Json(input))? };
+
+    let extism_pdk::Json(res) = res;
+
+    Ok(res)
 }
 
 /// file_close Releases a client-local file handle early. Closing an unknown or already-closed handle is harmless.

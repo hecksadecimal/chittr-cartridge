@@ -18,6 +18,8 @@ window.runDoomProfile = async ({ wasmUrl, frames = 80 }) => {
     set_fps(cp){return cp.store('{}');},request_frame(cp){return cp.store('{}');},
     file_read(cp,ptr){const {offset,length}=cp.read(ptr).json();const start=Number(offset);const chunk=wad.subarray(start,start+Number(length));return cp.store(JSON.stringify({bytes:base64(chunk),eof:start+chunk.length>=wad.length}));},
     file_close(cp){return cp.store('{}');},
+    audio_write(cp){return cp.store(JSON.stringify({accepted:true,queuedMs:0}));},
+    audio_stop(cp){return cp.store('{}');},
     submit(cp,ptr){const bytes=cp.read(ptr).bytes();callBytes+=bytes.length;callSubmits++;
       maxPacket=Math.max(maxPacket,bytes.length);player.play(decodeCommandBuffer(bytes));},
   }}});
@@ -34,7 +36,7 @@ window.runDoomProfile = async ({ wasmUrl, frames = 80 }) => {
   const frame=(i,dt=1000/35)=>call('frame',{t:i*1000/35,dt});
   await call('start',{width:320,height:200,dpr:1,fullscreen:false,prefersReducedMotion:false,state:null,
     capabilities:['files.client','framebuffer.indexed8'],
-    limits:{maxFileBytes:16777216,maxFileReadBytes:65536,maxFileHandles:4,maxFileBytesPerCanvas:33554432,maxPickers:8,maxFramebufferPixels:1048576,maxPaletteEntries:256}});
+    limits:{maxFileBytes:33554432,maxFileReadBytes:65536,maxFileHandles:4,maxFileBytesPerCanvas:41943040,maxPickers:8,maxFramebufferPixels:1048576,maxPaletteEntries:256,maxRelativePointerDelta:2000,maxPcmChunkBytes:65536,pcmQueueMs:2000}});
   await event({type:'file',name:'wad',file:{id:'f_profile',filename:'doom1.wad',mimeType:'application/octet-stream',size:wad.length}});
   await event({type:'pointer',action:'down'});await key('Space','down');
   // Loading is incremental: each frame reads a bounded number of WAD chunks.

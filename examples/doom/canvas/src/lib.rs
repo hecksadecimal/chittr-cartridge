@@ -1,6 +1,8 @@
 // Canvas Guest for the original DOOM engine. GPL-2.0; see ../../engine/LICENSE.TXT.
 #[cfg(all(feature = "engine", target_arch = "wasm32"))]
 mod allocator;
+#[cfg(any(feature = "engine", test))]
+mod audio;
 #[cfg(feature = "engine")]
 mod engine;
 #[allow(dead_code, non_camel_case_types, clippy::let_unit_value)]
@@ -13,14 +15,20 @@ use extism_pdk::Error;
 use pdk::types::*;
 use serde_json::{Map, Value};
 use std::cell::RefCell;
+#[cfg(feature = "engine")]
+use std::sync::Arc;
 
 #[cfg(any(feature = "engine", test))]
 const TIC_MS: f64 = 1000.0 / 35.0;
 
 const DEFAULT_SKILL: u8 = 2;
 const FILE_READ_MAX: u32 = 64 * 1024;
+/// The native engine keeps at most eight in-memory WAD sources: one base + seven mods.
+#[allow(dead_code)]
+const MAX_MOD_WADS: usize = 7;
 /// Bounded chunks read per frame while a viewer's WAD arrives. Four 64 KiB reads
 /// leave ample room under the 250 ms canvas-call deadline on slower phones.
+#[cfg(all(feature = "engine", target_arch = "wasm32"))]
 const WAD_CHUNKS_PER_FRAME: usize = 4;
 const SKILLS: [&str; 5] = ["baby", "easy", "medium", "hard", "nightmare"];
 
@@ -33,8 +41,17 @@ enum Presentation {
 }
 
 #[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WadKind {
+    Base,
+    Mod,
+}
+
+#[allow(dead_code)]
 struct WadLoad {
     id: String,
+    name: String,
+    kind: WadKind,
     size: u64,
     bytes: Vec<u8>,
     offset: u64,
@@ -61,13 +78,21 @@ struct Game {
     error: Option<String>,
     skill: u8,
     presentation: Presentation,
+    audio_enabled: bool,
+    notice: Option<String>,
     max_file_bytes: u64,
     max_file_read_bytes: u32,
     wad_load: Option<WadLoad>,
     #[cfg(feature = "engine")]
-    wad: Option<Vec<u8>>,
+    base_wad: Option<Arc<Vec<u8>>>,
+    #[cfg(feature = "engine")]
+    mod_wads: Vec<Arc<Vec<u8>>>,
+    base_name: Option<String>,
+    mod_names: Vec<String>,
     #[cfg(feature = "engine")]
     engine: Option<engine::Engine>,
+    #[cfg(feature = "engine")]
+    audio: Option<audio::Audio>,
     #[cfg(feature = "engine")]
     keys: Keys,
 }
@@ -85,13 +110,21 @@ impl Default for Game {
             error: None,
             skill: DEFAULT_SKILL,
             presentation: Presentation::Indexed,
-            max_file_bytes: 16 * 1024 * 1024,
+            audio_enabled: false,
+            notice: None,
+            max_file_bytes: 32 * 1024 * 1024,
             max_file_read_bytes: 64 * 1024,
             wad_load: None,
             #[cfg(feature = "engine")]
-            wad: None,
+            base_wad: None,
+            #[cfg(feature = "engine")]
+            mod_wads: Vec::new(),
+            base_name: None,
+            mod_names: Vec::new(),
             #[cfg(feature = "engine")]
             engine: None,
+            #[cfg(feature = "engine")]
+            audio: None,
             #[cfg(feature = "engine")]
             keys: Keys::default(),
         }
@@ -111,6 +144,16 @@ pub(crate) fn start(input: CanvasStartInput) -> Result<CanvasReply, Error> {
             .limits
             .max_file_read_bytes
             .clamp(1, FILE_READ_MAX as i64) as u32;
+        game.audio_enabled = has_capability(&input.capabilities, "audio.pcm");
+        let mut missing = Vec::new();
+        if !game.audio_enabled {
+            missing.push("audio.pcm");
+        }
+        if !has_capability(&input.capabilities, "input.relative-pointer") {
+            missing.push("input.relative-pointer");
+        }
+        game.notice = (!missing.is_empty())
+            .then(|| format!("Host did not grant {}", missing.join(" and ")));
         game.skill = skill_from_state(input.state.as_ref()).unwrap_or(DEFAULT_SKILL);
         if !has_capability(&input.capabilities, "files.client") {
             game.error =
@@ -162,12 +205,22 @@ pub(crate) fn frame(input: CanvasFrameInput) -> Result<CanvasReply, Error> {
                 }
             } else {
                 game.loading = false;
-                match game.wad.take() {
-                    Some(wad) => match engine::Engine::boot(wad, game.skill) {
-                        Ok(engine) => game.engine = Some(engine),
+                if let Some(base) = game.base_wad.clone() {
+                    let mut wads = Vec::with_capacity(1 + game.mod_wads.len());
+                    wads.push(base);
+                    wads.extend(game.mod_wads.iter().cloned());
+                    let audio = game
+                        .audio_enabled
+                        .then(|| audio::Audio::new(wads.clone()));
+                    match engine::Engine::boot(wads, game.skill) {
+                        Ok(engine) => {
+                            game.engine = Some(engine);
+                            game.audio = audio;
+                        }
                         Err(error) => game.error = Some(error),
-                    },
-                    None => game.error = Some("Choose a WAD file before starting".into()),
+                    }
+                } else {
+                    game.error = Some("Choose a base WAD file before starting".into());
                 }
             }
         } else if game.engine.is_some() && !game.paused && game.error.is_none() {
@@ -175,10 +228,13 @@ pub(crate) fn frame(input: CanvasFrameInput) -> Result<CanvasReply, Error> {
             for _ in 0..steps {
                 if let Err(error) = game.engine.as_mut().unwrap().tick() {
                     game.error = Some(error);
+                    game.stop_audio();
                     break;
                 }
             }
         }
+        #[cfg(all(feature = "engine", target_arch = "wasm32"))]
+        game.pump_audio(input.dt);
         #[cfg(not(feature = "engine"))]
         let _ = input;
         game.draw()?;
@@ -222,12 +278,44 @@ pub(crate) fn event(input: EventInput) -> Result<CanvasReply, Error> {
                 }
             }
             "blur" => game.pause(),
+            "input_reset" => game.release_input(),
             "visibility" if flag(&input.rest, "visible") == Some(false) => game.pause(),
-            "pointer" if text(&input.rest, "action") == Some("down") => {
-                game.armed = true;
-                if game.paused {
-                    game.paused = false;
-                    game.accumulator = 0.0;
+            "pointer" => {
+                if let Some(relative) = input.relative_pointer() {
+                    #[cfg(not(feature = "engine"))]
+                    let _ = relative;
+                    #[cfg(feature = "engine")]
+                    if !game.paused && game.error.is_none() {
+                        if let Some(engine) = &mut game.engine {
+                            engine.mouse(
+                                relative.movement_x,
+                                relative.movement_y,
+                                relative.buttons,
+                            );
+                        }
+                    }
+                } else {
+                    let action = text(&input.rest, "action");
+                    if action == Some("down") {
+                        game.armed = true;
+                        if game.paused {
+                            game.paused = false;
+                            game.accumulator = 0.0;
+                            #[cfg(feature = "engine")]
+                            audio::pause_music(false);
+                        }
+                    }
+                    #[cfg(feature = "engine")]
+                    if !game.paused && game.error.is_none() {
+                        if let Some(engine) = &mut game.engine {
+                            let buttons = match action {
+                                Some("down") => button_mask(&input.rest),
+                                Some("up") | Some("cancel") => 0,
+                                _ => button_mask(&input.rest),
+                            };
+                            engine.mouse(0.0, 0.0, buttons);
+                        }
+                    }
                 }
             }
             "key" => {
@@ -236,11 +324,11 @@ pub(crate) fn event(input: EventInput) -> Result<CanvasReply, Error> {
                 if down && code == Some("Space") && game.armed && !game.paused {
                     #[cfg(feature = "engine")]
                     if game.engine.is_none() && game.error.is_none() {
-                        if game.wad.is_some() {
-                            game.loading = true;
-                        } else if game.wad_load.is_some() {
-                            // The WAD is still arriving; start as soon as it is validated.
+                        if game.wad_load.is_some() {
+                            // A WAD is still arriving; start as soon as it is validated.
                             game.start_when_ready = true;
+                        } else if game.base_wad.is_some() {
+                            game.loading = true;
                         }
                     }
                 }
@@ -254,13 +342,30 @@ pub(crate) fn event(input: EventInput) -> Result<CanvasReply, Error> {
             "file" =>
             {
                 #[cfg(all(feature = "engine", target_arch = "wasm32"))]
-                if game.engine.is_none() {
-                    if let Some((name, file)) = input.file() {
-                        if name == "wad" {
+                if let Some((name, file)) = input.file() {
+                    if game.engine.is_some() {
+                        // The original engine boots once. Keep the running game and
+                        // tell the viewer how to apply a changed WAD set.
+                        let _ = chittr_cartridge::canvas::host::file_close(&file.id);
+                        game.notice = Some("Reload the card to change WADs".into());
+                    } else if name == "wad" || name == "freedoom1" || name == "freedoom2" || name == "mod" {
+                        let kind = if name == "mod" { WadKind::Mod } else { WadKind::Base };
+                        if kind == WadKind::Mod && game.base_wad.is_none() {
+                            let _ = chittr_cartridge::canvas::host::file_close(&file.id);
+                            game.error = Some("Choose a base WAD before adding mods".into());
+                        } else if kind == WadKind::Mod && game.mod_wads.len() >= MAX_MOD_WADS {
+                            let _ = chittr_cartridge::canvas::host::file_close(&file.id);
+                            game.error = Some(format!("At most {MAX_MOD_WADS} mod WADs are supported"));
+                        } else {
                             if let Some(previous) = game.wad_load.take() {
                                 let _ = chittr_cartridge::canvas::host::file_close(&previous.id);
                             }
-                            game.wad = None;
+                            if kind == WadKind::Base {
+                                game.base_wad = None;
+                                game.base_name = None;
+                                game.mod_wads.clear();
+                                game.mod_names.clear();
+                            }
                             game.start_when_ready = false;
                             game.loading = false;
                             if file.size == 0 {
@@ -273,8 +378,11 @@ pub(crate) fn event(input: EventInput) -> Result<CanvasReply, Error> {
                                     file.size, game.max_file_bytes
                                 ));
                             } else {
+                                game.notice = None;
                                 game.wad_load = Some(WadLoad {
                                     id: file.id,
+                                    name: file.filename,
+                                    kind,
                                     size: file.size,
                                     bytes: Vec::with_capacity(file.size as usize),
                                     offset: 0,
@@ -347,13 +455,28 @@ impl Game {
         }
         // The handle is call-scoped anyway; closing early releases the host buffer.
         let _ = chittr_cartridge::canvas::host::file_close(&load.id);
-        if let Err(error) = wad::validate(&load.bytes) {
+        let result = match load.kind {
+            WadKind::Base => wad::validate_base(&load.bytes),
+            WadKind::Mod => wad::validate_mod(&load.bytes),
+        };
+        if let Err(error) = result {
             self.loading = false;
             return Err(error);
         }
-        self.wad = Some(load.bytes);
+        let bytes = Arc::new(load.bytes);
+        match load.kind {
+            WadKind::Base => {
+                self.base_wad = Some(bytes);
+                self.base_name = Some(load.name);
+            }
+            WadKind::Mod => {
+                self.mod_wads.push(bytes);
+                self.mod_names.push(load.name);
+            }
+        }
         self.wad_load = None;
         self.loading = false;
+        self.error = None;
         Ok(true)
     }
 
@@ -419,6 +542,10 @@ fn flag(rest: &Map<String, Value>, key: &str) -> Option<bool> {
     rest.get(key).and_then(Value::as_bool)
 }
 
+fn button_mask(rest: &Map<String, Value>) -> u32 {
+    rest.get("buttons").and_then(Value::as_u64).unwrap_or(0) as u32
+}
+
 impl Game {
     fn animating(&self) -> bool {
         #[cfg(feature = "engine")]
@@ -431,14 +558,60 @@ impl Game {
         }
     }
 
-    fn pause(&mut self) {
-        self.paused = true;
-        self.accumulator = 0.0;
+    fn release_input(&mut self) {
         #[cfg(feature = "engine")]
         {
             self.keys.held.clear();
             if let Some(engine) = &mut self.engine {
-                engine.release_keys();
+                engine.release_input();
+            }
+        }
+    }
+
+    fn pause(&mut self) {
+        self.release_input();
+        self.paused = true;
+        self.accumulator = 0.0;
+        self.stop_audio();
+    }
+
+    fn stop_audio(&mut self) {
+        #[cfg(feature = "engine")]
+        {
+            if let Some(audio) = &mut self.audio {
+                audio.clear();
+            }
+            #[cfg(target_arch = "wasm32")]
+            if self.audio.is_some() {
+                let _ = chittr_cartridge::canvas::host::audio_stop();
+            }
+            audio::pause_music(true);
+        }
+    }
+
+    #[cfg(all(feature = "engine", target_arch = "wasm32"))]
+    fn pump_audio(&mut self, dt: f64) {
+        if self.paused || self.error.is_some() || self.engine.is_none() {
+            return;
+        }
+        let mut events = Vec::new();
+        if let Some(engine) = &self.engine {
+            while let Some(event) = engine.pop_sound() {
+                events.push(event);
+            }
+        }
+        let Some(audio) = &mut self.audio else {
+            return;
+        };
+        for event in events {
+            if let Some(name) = event.name() {
+                audio.push(name, event.volume);
+            }
+        }
+        if let Some(pcm) = audio.mix(dt) {
+            if let Ok(reply) = chittr_cartridge::canvas::host::audio_write("s16le", 48_000, 2, &pcm)
+            {
+                audio.set_queued_ms(reply.queued_ms);
             }
         }
     }
@@ -483,6 +656,10 @@ impl Game {
                 }
             }
             submit(&mut canvas)?;
+            if let Some(notice) = &self.notice {
+                self.notice_banner(&mut canvas, notice);
+                submit(&mut canvas)?;
+            }
             if self.paused {
                 self.message(&mut canvas, "Paused", "Click the canvas to resume");
                 submit(&mut canvas)?;
@@ -492,8 +669,7 @@ impl Game {
         let (title, message): (&str, String) = if self.loading {
             ("DOOM", self.loading_message())
         } else {
-            let (title, message) = self.idle_message();
-            (title, message.to_string())
+            self.idle_message()
         };
         self.message(&mut canvas, title, &message);
         submit(&mut canvas)
@@ -501,32 +677,59 @@ impl Game {
 
     fn loading_message(&self) -> String {
         match &self.wad_load {
-            Some(load) => format!("Loading DOOM… {}%", load.progress_percent()),
-            None => "Loading DOOM…".to_string(),
+            Some(load) => {
+                let name: String = load.name.chars().take(28).collect();
+                format!("Loading {name}… {}%", load.progress_percent())
+            }
+            None => "Loading WAD…".to_string(),
         }
     }
 
-    fn idle_message(&self) -> (&'static str, &'static str) {
+    fn idle_message(&self) -> (&'static str, String) {
         #[cfg(feature = "engine")]
         {
-            if self.wad.is_none() {
+            let Some(base_name) = self.base_name.as_deref() else {
                 return (
                     "DOOM",
-                    "Choose your WAD above, then click the canvas and press Space",
+                    "Choose a base WAD above, then click the canvas and press Space".to_string(),
                 );
-            }
+            };
+            let base: String = base_name.chars().take(24).collect();
+            let mods = match self.mod_names.len() {
+                0 => String::new(),
+                1 => " + 1 mod".to_string(),
+                n => format!(" + {n} mods"),
+            };
+            let set = format!("{base}{mods}");
             if self.armed {
-                return ("DOOM", "Press Space to start · first episode · silent");
+                return ("DOOM", format!("Press Space to start · {set} · silent"));
             }
-            ("DOOM", "Click the canvas, then press Space to start")
+            (
+                "DOOM",
+                format!("{set} · click the canvas, then press Space"),
+            )
         }
         #[cfg(not(feature = "engine"))]
         {
             (
                 "DOOM — scaffold build",
-                "Rebuild with the engine feature to play",
+                "Rebuild with the engine feature to play".to_string(),
             )
         }
+    }
+
+    fn notice_banner(&self, canvas: &mut Canvas2D, notice: &str) {
+        let scale = (self.width as f32 / 320.0).min(self.height as f32 / 200.0);
+        let height = 18.0 * scale;
+        let cx = self.width as f32 / 2.0;
+        canvas
+            .fill_color(rgba(8, 8, 8, 220))
+            .fill_rect(0.0, self.height as f32 - height, self.width as f32, height)
+            .text_align(TextAlign::Center)
+            .text_baseline(TextBaseline::Middle)
+            .fill_color(rgba(255, 210, 120, 255))
+            .font("sans-serif", 7.0 * scale, 400.0)
+            .fill_text(notice, cx, self.height as f32 - height / 2.0);
     }
 
     fn message(&self, canvas: &mut Canvas2D, title: &str, message: &str) {
@@ -544,6 +747,12 @@ impl Game {
             .fill_color(rgba(225, 225, 225, 255))
             .font("sans-serif", 10.0 * scale, 400.0)
             .fill_text(message, cx, cy + 20.0 * scale);
+        if let Some(notice) = &self.notice {
+            canvas
+                .fill_color(rgba(255, 210, 120, 255))
+                .font("sans-serif", 7.0 * scale, 400.0)
+                .fill_text(notice, cx, cy + 36.0 * scale);
+        }
     }
 }
 
@@ -639,19 +848,20 @@ fn doom_key(code: &str) -> Option<u8> {
     Some(match code {
         "ArrowUp" | "KeyW" => 0xad,
         "ArrowDown" | "KeyS" => 0xaf,
-        "ArrowLeft" | "KeyA" => 0xac,
-        "ArrowRight" | "KeyD" => 0xae,
+        "ArrowLeft" | "KeyQ" => 0xac,
+        "ArrowRight" | "KeyE" => 0xae,
         "Space" | "KeyJ" => 0x9d,
         "ControlLeft" | "ControlRight" | "KeyF" => 32,
         "ShiftLeft" | "ShiftRight" => 0xb6,
         "AltLeft" | "AltRight" => 0xb8,
         "Escape" | "KeyM" => 27,
-        "KeyQ" => b',',
-        "KeyE" => b'.',
+        "KeyA" => b',',
+        "KeyD" => b'.',
         "Enter" => 13,
         "Tab" => 9,
         "Backspace" => 127,
         "Pause" | "KeyP" => 0xff,
+        "F10" => 0xc4,
         _ if code.starts_with("Digit") && code.len() == 6 => code.as_bytes()[5],
         _ if code.starts_with("Key") && code.len() == 4 => code.as_bytes()[3].to_ascii_lowercase(),
         _ => return None,
@@ -767,6 +977,10 @@ mod tests {
         assert_eq!(doom_key("ControlLeft"), Some(32));
         assert_eq!(doom_key("KeyF"), Some(32));
         assert_eq!(doom_key("Digit2"), Some(b'2'));
+        assert_eq!(doom_key("KeyQ"), Some(0xac));
+        assert_eq!(doom_key("KeyE"), Some(0xae));
+        assert_eq!(doom_key("KeyA"), Some(b','));
+        assert_eq!(doom_key("KeyD"), Some(b'.'));
         assert_eq!(doom_key("F12"), None);
     }
 
@@ -812,6 +1026,9 @@ mod tests {
                 max_framebuffer_pixels: 64000,
                 max_palette_entries: 256,
                 max_pickers: 8,
+                max_relative_pointer_delta: 2000,
+                max_pcm_chunk_bytes: 65536,
+                pcm_queue_ms: 2000,
             },
         }
     }
@@ -865,6 +1082,8 @@ mod tests {
     fn wad_loading_progress_stays_below_complete_until_eof() {
         let load = WadLoad {
             id: "f".to_string(),
+            name: "freedoom1.wad".to_string(),
+            kind: WadKind::Base,
             size: 100,
             bytes: vec![0; 50],
             offset: 50,

@@ -57,6 +57,7 @@ typedef struct
 {
     char	name[8];
     int		handle;
+    int		wad;
     int		position;
     int		size;
 } lumpinfo_t;
@@ -68,6 +69,11 @@ extern	int		numlumps;
 
 void    W_InitMultipleFiles (char** filenames);
 void    W_Reload (void);
+
+/* In-memory WAD sources (ABI v2). Set the base first, then append mods; the
+ * engine searches from the last lump to the first, so later WADs override. */
+void	W_SetMemory (const byte* data, int len);
+void	W_AddMemory (const byte* data, int len);
 
 int	W_CheckNumForName (char* name);
 int	W_GetNumForName (char* name);

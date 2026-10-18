@@ -403,7 +403,8 @@ void G_BuildTiccmd (ticcmd_t* cmd)
 	} 
     } 
  
-    forward += mousey; 
+    /* Mouse Y is left for the original menus. In-game forward/back movement
+       stays on the keys so moving the mouse cannot walk the player. */
     if (strafe) 
 	side += mousex*2; 
     else 

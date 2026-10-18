@@ -12,10 +12,10 @@ use serde_json::{json, Map, Value};
 
 const TITLE: &str = "DOOM";
 #[cfg(feature = "engine")]
-const STATUS: &str = "First-episode port: choose your own WAD above, click the canvas, then press Space. Keyboard controls; audio and saves are disabled.";
+const STATUS: &str = "DOOM engine: load Freedoom 1 or 2, or choose your own base WAD, then add optional mod WADs above. Click the canvas and press Space. Keyboard and pointer-locked mouse controls; the host speaker plays the original music and sound effects; saves are disabled.";
 #[cfg(not(feature = "engine"))]
 const STATUS: &str =
-    "Scaffold build: rebuild with the engine feature to play. The viewer supplies their own WAD.";
+    "Scaffold build: rebuild with the engine feature to play. The viewer supplies their own WADs.";
 
 const SETTINGS_KEY: &str = "doom:settings";
 const SET_SKILL_CONTROL: &str = "set-skill";

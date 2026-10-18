@@ -1,33 +1,72 @@
 //! The original C engine owns global state; one instance per Canvas Guest module.
 //! GPL-2.0; see ../../engine/LICENSE.TXT.
 use std::ffi::{c_char, c_int, CStr};
+use std::sync::Arc;
 
 unsafe extern "C" {
-    fn doom_boot(wad: *const u8, len: c_int, skill: c_int) -> c_int;
+    fn doom_boot(
+        wads: *const *const u8,
+        lengths: *const c_int,
+        count: c_int,
+        skill: c_int,
+    ) -> c_int;
     fn doom_tick();
     fn doom_pixels() -> *const u8;
     fn doom_palette() -> *const u8;
     fn doom_key(key: c_int, down: c_int);
+    fn doom_mouse(dx: c_int, dy: c_int, buttons: c_int);
+    fn doom_pop_sound_event(event: *mut SoundEvent) -> c_int;
     fn doom_error() -> *const c_char;
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+#[allow(dead_code)]
+pub struct SoundEvent {
+    pub name: [u8; 8],
+    pub volume: u8,
+}
+
+impl SoundEvent {
+    #[allow(dead_code)]
+    pub fn name(&self) -> Option<&str> {
+        let end = self.name.iter().position(|byte| *byte == 0).unwrap_or(8);
+        std::str::from_utf8(&self.name[..end]).ok()
+    }
+}
+
 pub struct Engine {
-    // C retains a pointer into this allocation throughout the instance's lifetime.
-    _wad: Vec<u8>,
+    // C retains pointers into these allocations throughout the instance's lifetime.
+    _wads: Vec<Arc<Vec<u8>>>,
 }
 
 impl Engine {
-    /// Boots the original engine over a WAD the viewer selected at runtime. The
-    /// bytes are validated by the caller and retained here for the engine's lifetime.
-    /// `skill` is the original `skill_t` index (0–4), chosen by the owner's default.
-    pub fn boot(wad: Vec<u8>, skill: u8) -> Result<Self, String> {
+    /// Boots the original engine over a base WAD and optional mod WADs the viewer
+    /// selected at runtime. The bytes are validated by the caller and retained here
+    /// for the engine's lifetime; later WADs override earlier lumps. `skill` is the
+    /// original `skill_t` index (0–4), chosen by the owner's default.
+    pub fn boot(wads: Vec<Arc<Vec<u8>>>, skill: u8) -> Result<Self, String> {
+        if wads.is_empty() {
+            return Err("Choose a WAD file before starting".into());
+        }
         #[cfg(target_arch = "wasm32")]
         crate::allocator::init();
-        // SAFETY: validated WAD, retained in self; engine boots once per module.
-        if unsafe { doom_boot(wad.as_ptr(), wad.len() as c_int, skill.into()) } != 0 {
+        let pointers: Vec<*const u8> = wads.iter().map(|wad| wad.as_ptr()).collect();
+        let lengths: Vec<c_int> = wads.iter().map(|wad| wad.len() as c_int).collect();
+        // SAFETY: validated WADs, retained in self; pointers stay valid while the
+        // Arc allocations live. The engine boots once per module.
+        if unsafe {
+            doom_boot(
+                pointers.as_ptr(),
+                lengths.as_ptr(),
+                wads.len() as c_int,
+                skill.into(),
+            )
+        } != 0
+        {
             return Err(last_error().unwrap_or_else(|| "DOOM initialization failed".into()));
         }
-        Ok(Self { _wad: wad })
+        Ok(Self { _wads: wads })
     }
 
     pub fn tick(&mut self) -> Result<(), String> {
@@ -45,6 +84,31 @@ impl Engine {
         for key in 0..=255 {
             self.key(key, false);
         }
+    }
+
+    pub fn mouse(&mut self, dx: f64, dy: f64, buttons: u32) {
+        let clamp = |value: f64| {
+            if value.is_finite() {
+                value.clamp(-2000.0, 2000.0) as c_int
+            } else {
+                0
+            }
+        };
+        // SAFETY: initialized engine, bounded relative movement and button bits.
+        unsafe { doom_mouse(clamp(dx), clamp(dy), (buttons & 7) as c_int) };
+    }
+
+    pub fn release_input(&mut self) {
+        self.release_keys();
+        self.mouse(0.0, 0.0, 0);
+    }
+
+    /// Drains one high-level sound event queued by the C engine.
+    #[allow(dead_code)]
+    pub fn pop_sound(&self) -> Option<SoundEvent> {
+        let mut event = SoundEvent::default();
+        // SAFETY: the engine wrote only its fixed queue; the struct is repr(C).
+        (unsafe { doom_pop_sound_event(&mut event) } != 0).then_some(event)
     }
 
     pub fn image(&self) -> (&[u8], &[u8]) {
@@ -91,8 +155,9 @@ mod tests {
             eprintln!("skipping: no local WAD (set DOOM_WAD or add cartridge/assets/doom1.wad)");
             return;
         };
-        crate::wad::validate(&wad).expect("validate the locally supplied WAD");
-        let mut engine = Engine::boot(wad, 2).expect("boot original engine");
+        crate::wad::validate_base(&wad).expect("validate the locally supplied WAD");
+        let wad = Arc::new(wad);
+        let mut engine = Engine::boot(vec![wad], 2).expect("boot original engine");
         let first = engine.image().0.to_vec();
         engine.key(0xad, true);
         for _ in 0..35 {

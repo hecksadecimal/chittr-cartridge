@@ -33,16 +33,31 @@ static byte rgb[768];
 static byte desired_keys[256], delivered_keys[256];
 static struct { byte key, down; } pending_keys[512];
 static int pending_count;
+/* High-level sound events are drained by the Canvas Guest's PCM mixer. */
+#define SOUND_EVENT_MAX 64
+static doom_sound_event_t sound_events[SOUND_EVENT_MAX];
+static int sound_event_head, sound_event_tail;
 void D_DoomTick(void);
 void D_ProcessEvents(void);
 void W_SetMemory(const byte *data,int len);
+void W_AddMemory(const byte *data,int len);
 
-int doom_boot(const unsigned char *wad,int len,int skill)
+#define MAX_WADS 8
+
+int doom_boot(const unsigned char *const *wads,const int *lengths,int count,int skill)
 {
     static char *argv[] = {"doom-cartridge", NULL};
+    int i;
     if (skill < 0 || skill > 4)
     {
         if (!attempted) strcpy(error_text,"skill must be 0 to 4");
+        attempted = 1;
+        running = 0;
+        return -1;
+    }
+    if (count < 1 || count > MAX_WADS || !wads || !lengths)
+    {
+        if (!attempted) strcpy(error_text,"invalid boot arguments");
         attempted = 1;
         running = 0;
         return -1;
@@ -57,7 +72,8 @@ int doom_boot(const unsigned char *wad,int len,int skill)
     guarded = 1;
     if (DOOM_GUARD()) { guarded = 0; running = 0; return -1; }
     cartridge_start_skill = skill;
-    W_SetMemory(wad,len);
+    W_SetMemory(wads[0],lengths[0]);
+    for (i=1; i<count; ++i) W_AddMemory(wads[i],lengths[i]);
     myargc = 1; myargv = argv;
     D_DoomMain();
     running = 1;
@@ -87,6 +103,46 @@ void doom_key(int key,int down)
         pending_keys[pending_count].down = down != 0;
         ++pending_count;
     }
+}
+void doom_mouse(int dx,int dy,int buttons)
+{
+    event_t event;
+    if (!running) return;
+    if (dx < -2000) dx = -2000;
+    if (dx > 2000) dx = 2000;
+    if (dy < -2000) dy = -2000;
+    if (dy > 2000) dy = 2000;
+    /* Match the original X11 driver: shift the screen delta by two, and
+       invert Y because DOM movementY grows downward. */
+    dx <<= 2;
+    dy = -dy << 2;
+    event.type = ev_mouse;
+    event.data1 = buttons & 7;
+    event.data2 = dx;
+    event.data3 = dy;
+    D_PostEvent(&event);
+    D_ProcessEvents();
+}
+void doom_queue_sound(const char *name,int volume)
+{
+    int next, i;
+    doom_sound_event_t *event;
+    if (!name || volume <= 0) return;
+    next = (sound_event_head + 1) % SOUND_EVENT_MAX;
+    if (next == sound_event_tail) return; /* bounded; drop when full */
+    event = &sound_events[sound_event_head];
+    for (i = 0; i < 7 && name[i]; ++i) event->name[i] = (unsigned char)name[i];
+    event->name[i] = 0;
+    while (++i < 8) event->name[i] = 0;
+    event->volume = (unsigned char)(volume > 15 ? 15 : volume);
+    sound_event_head = next;
+}
+int doom_pop_sound_event(doom_sound_event_t *event)
+{
+    if (!event || sound_event_tail == sound_event_head) return 0;
+    *event = sound_events[sound_event_tail];
+    sound_event_tail = (sound_event_tail + 1) % SOUND_EVENT_MAX;
+    return 1;
 }
 void I_Error(char *format,...)
 {

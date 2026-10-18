@@ -1,12 +1,94 @@
-<section style="display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid #555; border-radius: 8px">
-  <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px"><lc-author></lc-author><lc-menu></lc-menu></div>
-  <h2 style="margin: 0">{{ title }}</h2>
-  <p style="margin: 0">{{ status }}</p>
-  <p style="margin: 0; font-size: 0.8rem; opacity: 0.8">Default difficulty: {{ difficulty }}{% if difficultyCustom %} · set by the owner{% endif %}</p>
-  <lc-file name="wad" target="client" accept=".wad" max-bytes="16777216" label="Choose your DOOM WAD"></lc-file>
-  <lc-canvas width="320" height="200" fullscreen label="DOOM first-episode port. Choose your own WAD file above, then click the canvas and press Space to start. Arrows or W A S D move and turn; Space fires; F uses or opens doors; M opens the game menu. Keyboard required."></lc-canvas>
-  <p style="margin: 0; font-size: 0.8rem; opacity: 0.8">Arrows / WASD: move &amp; turn · Space: fire · F: use · Shift: run · Q/E: strafe · Tab: map · M: menu · P: pause. Escape releases canvas focus.</p>
-  <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap">
+<section style="display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid #5a3a2b; border-radius: 12px; box-sizing: border-box; background-color: #0e0c0a; color: #f0e4d0; font-family: ui-monospace, monospace">
+  <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; color: #c9a77e; font-size: 0.8rem">
+    <lc-author></lc-author>
+    <lc-menu></lc-menu>
+  </div>
+
+  <div style="height: 4px; border-radius: 2px; background-image: repeating-linear-gradient(135deg, #b4532a 0, #b4532a 8px, #1a0f0a 8px, #1a0f0a 16px); opacity: 0.7"></div>
+
+  <div style="position: relative; isolation: isolate; overflow: hidden; display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid #6f4a32; border-radius: 10px; background-color: #17110d; background-image: linear-gradient(145deg, #2a1b14 0%, #120e0b 60%, #0b0908 100%); box-shadow: inset 0 0 60px #000c, 0 0 0 1px #0007">
+    <div style="position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: -1; background-image: radial-gradient(circle at 12% 8%, #b91c1c33, transparent 34%), radial-gradient(circle at 88% 22%, #d9770626, transparent 30%), repeating-linear-gradient(0deg, #ffffff05 0, #ffffff05 1px, transparent 1px, transparent 4px)"></div>
+    <div style="position: absolute; right: 8%; top: -10px; width: 3px; height: 68px; background-color: #7f1d1d; opacity: 0.55; z-index: -1"></div>
+    <div style="position: absolute; right: 8%; top: 56px; width: 14px; height: 14px; border-radius: 50%; background-color: #7f1d1d; opacity: 0.5; z-index: -1"></div>
+
+    <header style="display: flex; flex-direction: column; gap: 4px; text-align: center; padding: 2px 0 8px; border-bottom: 1px solid #c5a16a38">
+      <p style="margin: 0; color: #d98a54; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.28em; text-transform: uppercase">UAC // LOCAL ENGINE</p>
+      <h1 style="margin: 0; color: #f6e9d2; font-family: ui-monospace, monospace; font-weight: 900; font-size: 3.1rem; line-height: 0.95; letter-spacing: 0.16em; text-shadow: 0 2px 0 #7f1d1d, 0 4px 0 #000, 0 0 26px #ef444488">{{ title | escape }}</h1>
+      <p style="margin: 2px 0 0; color: #c9a77e; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase">DOOM engine // local WADs</p>
+    </header>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 6px">
+      <div style="flex: 1 1 90px; min-width: 0; padding: 8px 9px; border: 1px solid #5a3a2b; border-radius: 5px; background-color: #100c09cc">
+        <p style="margin: 0 0 2px; color: #a98866; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase">Default skill</p>
+        <p style="margin: 0; color: #f0e4d0; font-size: 0.82rem; font-weight: 700">{{ difficulty | escape }}{% if difficultyCustom %} <span style="color: #d98a54; font-size: 0.6rem">· owner set</span>{% endif %}</p>
+      </div>
+      <div style="flex: 1 1 90px; min-width: 0; padding: 8px 9px; border: 1px solid #5a3a2b; border-radius: 5px; background-color: #100c09cc">
+        <p style="margin: 0 0 2px; color: #a98866; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase">Engine</p>
+        <p style="margin: 0; color: #f0e4d0; font-size: 0.82rem; font-weight: 700">Doom I/II</p>
+      </div>
+      <div style="flex: 1 1 90px; min-width: 0; padding: 8px 9px; border: 1px solid #5a3a2b; border-radius: 5px; background-color: #100c09cc">
+        <p style="margin: 0 0 2px; color: #a98866; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase">Data</p>
+        <p style="margin: 0; color: #f0e4d0; font-size: 0.82rem; font-weight: 700">Local WADs</p>
+      </div>
+    </div>
+
+    <p style="margin: 0; padding: 10px 12px; border-left: 3px solid #b4532a; border-radius: 0 5px 5px 0; background-color: #1e1410; color: #cbbda9; font-size: 0.78rem; line-height: 1.55">{{ status | escape }}</p>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 7px; padding: 11px; border: 1px dashed #6f4a32; border-radius: 8px; background-color: #15100d">
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+      <p style="margin: 0; color: #d98a54; font-size: 0.64rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase">Supply crate // WADs</p>
+      <span style="color: #8f7a64; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase">Freedoom + local</span>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 6px">
+      <div style="flex: 1 1 140px; min-width: 0">
+        <lc-file name="freedoom1" target="client" asset="freedoom1.wad" max-bytes="33554432" label="Load Freedoom 1"></lc-file>
+      </div>
+      <div style="flex: 1 1 140px; min-width: 0">
+        <lc-file name="freedoom2" target="client" asset="freedoom2.wad" max-bytes="33554432" label="Load Freedoom 2"></lc-file>
+      </div>
+    </div>
+    <p style="margin: 0; color: #a99882; font-size: 0.7rem; line-height: 1.45">Freedoom Phase 1 (Doom I) and Phase 2 (Doom II) are bundled, or choose your own base WAD. Then add mod PWADs; later WADs override earlier lumps. Wait for each picker to finish loading before choosing the next, and add all WADs before pressing Space; reload the card to change WADs after the game starts.</p>
+    <lc-file name="wad" target="client" accept=".wad" max-bytes="33554432" label="Choose your own base WAD"></lc-file>
+    <lc-file name="mod" target="client" accept=".wad" max-bytes="33554432" label="Add a mod WAD (optional)"></lc-file>
+    <p style="margin: 0; color: #8f7a64; font-size: 0.62rem; line-height: 1.45">Your own WADs stay in the browser; the bundled Freedoom IWADs are read from this cartridge. No proprietary Doom data is shipped.</p>
+  </div>
+
+  <div style="padding: 8px; border: 1px solid #6f4a32; border-radius: 9px; background-image: linear-gradient(#24170f, #0c0907); box-shadow: inset 0 0 28px #000, 0 0 0 1px #000">
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 0 2px 7px; color: #d98a54; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase">
+      <span><span style="display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background-color: #ef4444; box-shadow: 0 0 8px #ef4444"></span>Live feed</span>
+      <span style="color: #8f7a64">320 × 200 // Indexed8</span>
+    </div>
+    <lc-canvas width="320" height="200" fullscreen touch="none" label="DOOM engine. Choose a base WAD and optional mod WADs above, click the canvas to capture the mouse, and press Space to start. W/S move, A/D strafe, Q/E turn."></lc-canvas>
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 2px 0; color: #8f7a64; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase">
+      <span>Click canvas to capture mouse</span>
+      <span>Speaker ↑ for sound</span>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 2px">
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-bottom: 4px; border-bottom: 1px solid #5a3a2b55">
+      <p style="margin: 0; color: #d98a54; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase">Control scheme</p>
+      <span style="color: #8f7a64; font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase">Keyboard + mouse</span>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 8px 16px">
+      <div style="flex: 1 1 120px; min-width: 0">
+        <p style="margin: 0 0 4px; color: #a98866; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase">Move</p>
+        <p style="margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: #cbbda9; font-size: 0.7rem"><span style="padding: 2px 5px; border: 1px solid #6f4a32; border-radius: 3px; background-color: #211812; box-shadow: 0 2px 0 #000">W</span><span style="padding: 2px 5px; border: 1px solid #6f4a32; border-radius: 3px; background-color: #211812; box-shadow: 0 2px 0 #000">S</span> or <span style="padding: 2px 5px; border: 1px solid #6f4a32; border-radius: 3px; background-color: #211812; box-shadow: 0 2px 0 #000">↑</span><span style="padding: 2px 5px; border: 1px solid #6f4a32; border-radius: 3px; background-color: #211812; box-shadow: 0 2px 0 #000">↓</span></p>
+      </div>
+      <div style="flex: 1 1 120px; min-width: 0">
+        <p style="margin: 0 0 4px; color: #a98866; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase">Strafe / turn</p>
+        <p style="margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: #cbbda9; font-size: 0.7rem"><span style="padding: 2px 5px; border: 1px solid #6f4a32; border-radius: 3px; background-color: #211812; box-shadow: 0 2px 0 #000">A</span><span style="padding: 2px 5px; border: 1px solid #6f4a32; border-radius: 3px; background-color: #211812; box-shadow: 0 2px 0 #000">D</span> strafe · <span style="padding: 2px 5px; border: 1px solid #6f4a32; border-radius: 3px; background-color: #211812; box-shadow: 0 2px 0 #000">Q</span><span style="padding: 2px 5px; border: 1px solid #6f4a32; border-radius: 3px; background-color: #211812; box-shadow: 0 2px 0 #000">E</span> turn</p>
+      </div>
+      <div style="flex: 1 1 150px; min-width: 0">
+        <p style="margin: 0 0 4px; color: #a98866; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase">Actions</p>
+        <p style="margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: #cbbda9; font-size: 0.7rem"><span style="padding: 2px 5px; border: 1px solid #6f4a32; border-radius: 3px; background-color: #211812; box-shadow: 0 2px 0 #000">Space</span> fire · <span style="padding: 2px 5px; border: 1px solid #6f4a32; border-radius: 3px; background-color: #211812; box-shadow: 0 2px 0 #000">F</span> use · <span style="padding: 2px 5px; border: 1px solid #6f4a32; border-radius: 3px; background-color: #211812; box-shadow: 0 2px 0 #000">Shift</span> run</p>
+      </div>
+    </div>
+    <p style="margin: 0; color: #8f7a64; font-size: 0.68rem; line-height: 1.5">Tab map · M menu · P pause · 1–8 weapons · Escape releases focus. Click the canvas to capture the mouse; the speaker at the top-right starts muted.</p>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding-top: 8px; border-top: 1px solid #5a3a2b55">
     <lc-reply></lc-reply>
     <lc-rechitt></lc-rechitt>
   </div>

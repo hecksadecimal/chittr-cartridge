@@ -23,7 +23,7 @@ impl Default for Limits {
         Self {
             archive_bytes: 32 * MIB,
             inflated_bytes: 64 * MIB,
-            asset_bytes: 16 * MIB,
+            asset_bytes: 32 * MIB,
             wasm_bytes: 4 * MIB,
             files: 1_000,
             template_files: 64,

@@ -92,7 +92,7 @@ illustrative syntax:
   name="wad"
   target="client"
   accept=".wad"
-  max-bytes="16777216"
+  max-bytes="33554432"
   label="Choose your local WAD">
 </lc-file>
 
@@ -410,8 +410,8 @@ these are starting points for implementation and load testing, **not committed A
 
 | Resource | Suggested starting bound |
 | --- | --- |
-| One selected file | 16 MiB; a template may lower it |
-| Live client file handles | 4, with 32 MiB aggregate file bytes per canvas |
+| One selected file | 32 MiB; a template may lower it |
+| Live client file handles | 4, with 40 MiB aggregate file bytes per canvas |
 | File read | 64 KiB per operation |
 | File pickers per card | 8 uniquely named, one file per selection |
 | Framebuffer surfaces | 4 handles, with 8 MiB aggregate storage including caches/staging |

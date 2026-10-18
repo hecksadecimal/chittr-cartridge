@@ -20,6 +20,7 @@ use regex::Regex;
 
 use crate::controls::{valid_control_name, ControlDeclarations};
 use crate::error::{fail, js_len, Result};
+use crate::manifest::is_asset_path;
 
 /// Tags LiquidJS knows and the Rust crate does not: they parse here as no-ops.
 const STUB_TAGS: [&str; 3] = ["echo", "include", "render"];
@@ -159,6 +160,7 @@ pub fn check_file_pickers(file: &str, source: &str) -> Result<()> {
         }
         let mut name: Option<String> = None;
         let mut target: Option<String> = None;
+        let mut asset: Option<String> = None;
         for attribute in LC_FILE_ATTR.captures_iter(&tag[1]) {
             let key = attribute[1].to_ascii_lowercase();
             let value = attribute
@@ -169,6 +171,13 @@ pub fn check_file_pickers(file: &str, source: &str) -> Result<()> {
             match key.as_str() {
                 "name" => name = Some(value.to_string()),
                 "target" => target = Some(value.to_string()),
+                "asset" => {
+                    let path = value.strip_prefix("assets/").unwrap_or(value);
+                    if !is_asset_path(path) {
+                        return fail(file, "<lc-file> asset must name a file under assets/");
+                    }
+                    asset = Some(path.to_string());
+                }
                 "accept" => {
                     let entries: Vec<&str> = value.split(',').map(str::trim).collect();
                     if entries.is_empty()
@@ -210,6 +219,9 @@ pub fn check_file_pickers(file: &str, source: &str) -> Result<()> {
                 return fail(file, format!("<lc-file> target must be \"client\" or \"server\", not \"{other}\""))
             }
             None => return fail(file, "<lc-file> needs a target of \"client\" or \"server\""),
+        }
+        if asset.is_some() && target.as_deref() != Some("client") {
+            return fail(file, "<lc-file> asset requires target=\"client\"");
         }
     }
     Ok(())

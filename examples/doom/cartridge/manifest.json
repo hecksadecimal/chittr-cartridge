@@ -1,11 +1,11 @@
 {
   "v": 2,
-  "name": "DOOM — first episode",
-  "version": "0.3.0",
+  "name": "DOOM engine",
+  "version": "0.6.0",
   "capabilities": {
     "server": { "require": ["files.server"] },
     "canvas": {
-      "require": ["files.client"],
+      "require": ["files.client", "input.relative-pointer", "audio.pcm"],
       "optional": ["framebuffer.indexed8", "framebuffer.rgba8"]
     }
   },

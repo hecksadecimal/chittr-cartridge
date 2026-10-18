@@ -29,7 +29,7 @@ what happens past a limit is one of these:
 | Inflated size of the archive's files | 64 MiB | refused at upload |
 | Files in the archive | 1,000 | refused at upload |
 | `server.wasm` and `canvas.wasm` each | 4 MiB | refused at upload |
-| An asset file under `assets/` | 16 MiB | refused at upload |
+| An asset file under `assets/` | 32 MiB | refused at upload |
 | Template files under `templates/` | 64 | refused at upload |
 | One template file | 256 KiB | refused at upload |
 | `manifest.json` | 16 KiB | refused at upload |

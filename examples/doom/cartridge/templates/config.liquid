@@ -1,31 +1,53 @@
-<section style="display: flex; flex-direction: column; gap: 12px; padding: 12px; border: 1px solid #555; border-radius: 8px">
-  <div>
-    <h3 style="margin: 0 0 4px 0">DOOM — card settings</h3>
-    <p style="margin: 0; font-size: 0.8rem; opacity: 0.8">Private to this Chitt's {{ viewerRole | escape }}. Changes affect new games; reload a running card to pick up a new difficulty.</p>
+<section style="display: flex; flex-direction: column; gap: 12px; padding: 12px; border: 1px solid #5a3a2b; border-radius: 12px; box-sizing: border-box; background-color: #0e0c0a; color: #f0e4d0; font-family: ui-monospace, monospace">
+  <div style="height: 4px; border-radius: 2px; background-image: repeating-linear-gradient(135deg, #b4532a 0, #b4532a 8px, #1a0f0a 8px, #1a0f0a 16px); opacity: 0.7"></div>
+  <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 14px; border: 1px solid #6f4a32; border-radius: 9px; background-color: #17110d; background-image: linear-gradient(145deg, #2a1b14, #100c09); box-shadow: inset 0 0 40px #000b">
+    <div style="min-width: 0">
+      <p style="margin: 0 0 3px; color: #d98a54; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.24em; text-transform: uppercase">UAC // Cartridge configuration</p>
+      <h3 style="margin: 0; color: #f6e9d2; font-family: ui-monospace, monospace; font-weight: 900; font-size: 1.7rem; line-height: 1; letter-spacing: 0.1em">DOOM ENGINE CONTROL ROOM</h3>
+      <p style="margin: 5px 0 0; color: #cbbda9; font-size: 0.78rem; line-height: 1.5">Private to this Chitt's {{ viewerRole | escape }}. This sets the starting skill for new games; base and mod WADs are chosen on the card. Reload a running card to pick up a new difficulty.</p>
+    </div>
+    <span style="flex: none; padding: 5px 8px; border: 1px solid #6f4a32; border-radius: 4px; background-color: #211812; color: #d98a54; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase">{{ requiredAudience | escape }}</span>
   </div>
+
   {% if configurationAllowed %}
-  <div style="display: flex; flex-direction: column; gap: 6px">
-    <p style="margin: 0; font-size: 0.85rem; font-weight: 700">Default difficulty: {{ selectedSkill | escape }}</p>
-    <p style="margin: 0; font-size: 0.8rem; opacity: 0.8">Players can still use DOOM's own menu after starting. Nightmare! leaves respawning enemies enabled.</p>
+  <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid #5a3a2b; border-radius: 8px; background-color: #15100d">
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px; padding-bottom: 5px; border-bottom: 1px solid #5a3a2b66">
+      <p style="margin: 0; color: #d98a54; font-size: 0.64rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase">Default difficulty</p>
+      <p style="margin: 0; color: #f0e4d0; font-size: 0.8rem; font-weight: 700">{{ selectedSkill | escape }}</p>
+    </div>
+    <p style="margin: 0; color: #a99882; font-size: 0.72rem; line-height: 1.5">The default for a fresh game. Players can still change it from DOOM's own menu after starting. Nightmare! leaves respawning enemies enabled.</p>
     <div style="display: flex; flex-wrap: wrap; gap: 6px">
       {% for option in skills %}
-      <button type="button" data-lc-control="set-skill" data-lc-value="{{ option.value | escape }}" aria-pressed="{{ option.selected }}" style="padding: 7px 9px; border: 1px solid {% if option.selected %}#d2462d{% else %}#555{% endif %}; border-radius: 5px; background-color: {% if option.selected %}#3a1f19{% else %}transparent{% endif %}; color: inherit; font-size: 0.78rem; font-weight: {% if option.selected %}800{% else %}500{% endif %}; cursor: pointer">{{ option.label | escape }}{% if option.selected %} · current{% endif %}</button>
+      <button type="button" data-lc-control="set-skill" data-lc-value="{{ option.value | escape }}" style="flex: 1 1 105px; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 8px 10px; border: 1px solid {% if option.selected %}#b4532a{% else %}#6f4a32{% endif %}; border-radius: 5px; background-color: {% if option.selected %}#3a1f16{% else %}#211812{% endif %}; color: {% if option.selected %}#f6e9d2{% else %}#cbbda9{% endif %}; text-align: left; font-family: ui-monospace, monospace; cursor: pointer; box-shadow: {% if option.selected %}inset 0 0 18px #b4532a22, 0 2px 0 #000{% else %}0 2px 0 #000{% endif %}">
+        <span style="font-size: 0.72rem; font-weight: {% if option.selected %}800{% else %}600{% endif %}; line-height: 1.2">{{ option.label | escape }}</span>
+        {% if option.selected %}<span style="color: #d98a54; font-size: 0.55rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase">Current</span>{% endif %}
+      </button>
       {% endfor %}
     </div>
   </div>
+
   {% if custom and viewerIsOwner %}
-  <div style="display: flex; flex-direction: column; gap: 5px; padding-top: 8px; border-top: 1px solid #555">
-    <button type="button" data-lc-control="reset-settings" data-lc-value="reset" style="align-self: flex-start; padding: 7px 9px; border: 1px solid #b66a61; border-radius: 5px; background-color: #44232a; color: #f5e4df; font-size: 0.78rem; font-weight: 700; cursor: pointer">Reset to {{ defaultSkill | escape }}</button>
-    <p style="margin: 0; font-size: 0.75rem; opacity: 0.75">Owner only. The host asks for confirmation before this runs.</p>
+  <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 1px solid #6f4a32; border-radius: 8px; background-color: #1c1210">
+    <p style="margin: 0; color: #d98a54; font-size: 0.64rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase">Owner override</p>
+    <p style="margin: 0; color: #a99882; font-size: 0.72rem; line-height: 1.5">Restores the default to {{ defaultSkill | escape }} for future games. The host asks for confirmation before this runs.</p>
+    <button type="button" data-lc-control="reset-settings" data-lc-value="reset" style="align-self: flex-start; padding: 8px 11px; border: 1px solid #b66a61; border-radius: 5px; background-color: #44232a; color: #f5e4df; font-family: ui-monospace, monospace; font-size: 0.75rem; font-weight: 700; cursor: pointer; box-shadow: 0 2px 0 #000">Reset to {{ defaultSkill | escape }}</button>
   </div>
   {% endif %}
-  <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid #555">
-    <p style="margin: 0; font-size: 0.8rem; font-weight: 700">Import settings</p>
+
+  <div style="display: flex; flex-direction: column; gap: 7px; padding: 12px; border: 1px dashed #6f4a32; border-radius: 8px; background-color: #15100d">
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px">
+      <p style="margin: 0; color: #d98a54; font-size: 0.64rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase">Import settings // server-reserved</p>
+      <span style="color: #8f7a64; font-size: 0.56rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase">Max {{ importLimit }} bytes</span>
+    </div>
     <lc-file name="import-settings" target="server" accept=".json,application/json" max-bytes="4096" label="Import DOOM settings JSON"></lc-file>
-    <p style="margin: 0; font-size: 0.75rem; opacity: 0.75">A small JSON object, for example <code>{"skill":"nightmare"}</code> (up to {{ importLimit }} bytes). The WAD picker stays on the public card and never uploads game data.</p>
+    <p style="margin: 0; color: #a99882; font-size: 0.72rem; line-height: 1.5">A small JSON object, for example <code style="padding: 1px 4px; border: 1px solid #5a3a2b; border-radius: 3px; background-color: #0e0c0a; color: #d98a54">{"skill":"nightmare"}</code>. The WAD pickers stay on the public card and never upload game data.</p>
   </div>
-  <p style="margin: 0; font-size: 0.75rem; opacity: 0.7">Configuration access: {{ requiredAudience | escape }}. You are signed in as the {{ viewerRole | escape }}.</p>
+
+  <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid #5a3a2b55; color: #8f7a64; font-size: 0.62rem; letter-spacing: 0.06em; text-transform: uppercase">
+    <span>Channel <strong style="color: #c9a77e">{{ requiredAudience | escape }}</strong></span>
+    <span>Signed in as <strong style="color: #c9a77e">{{ viewerRole | escape }}</strong></span>
+  </div>
   {% else %}
-  <p style="margin: 0; font-size: 0.85rem">The host did not grant configuration access for this view.</p>
+  <p style="margin: 0; padding: 12px; border: 1px solid #b4532a66; border-radius: 6px; background-color: #1e1410; color: #d98a54; font-size: 0.82rem">The host did not grant configuration access for this view.</p>
   {% endif %}
 </section>

@@ -123,10 +123,10 @@ the schemas name these `CanvasLimits` and `ServerLimits`.
 
 ```json
 {
-  "maxFileBytes": 16777216,
+  "maxFileBytes": 33554432,
   "maxFileReadBytes": 65536,
   "maxFileHandles": 4,
-  "maxFileBytesPerCanvas": 33554432,
+  "maxFileBytesPerCanvas": 41943040,
   "maxPickers": 8,
   "maxFramebufferPixels": 1048576,
   "maxPaletteEntries": 256
@@ -150,7 +150,7 @@ would be noise. if a host ever needs to revoke a capability mid-life, it disable
   name="wad"
   target="client"
   accept=".wad"
-  max-bytes="16777216"
+  max-bytes="33554432"
   label="Choose your local WAD">
 </lc-file>
 ```
@@ -164,6 +164,8 @@ would be noise. if a host ever needs to revoke a capability mid-life, it disable
   cap. A value above the host cap is clamped at render, not refused, so a template stays portable.
 - `label` is optional plain text, at most 200 characters, used by the host-owned input's accessible label. Absent means
   the host supplies a default.
+- `asset` is optional: a Cartridge asset path under `assets/`, requiring `target="client"`. The host renders a button and
+  fetches that file, delivering it through the same client route. This lets a card offer a WAD it ships.
 
 **Host Part rules.** the element is a leaf: children, extra attributes, inline script and event handlers are dropped by
 the sanitizer. the validator checks the attributes at upload; the client renderer checks them again at render. arbitrary
@@ -396,9 +398,9 @@ these are the v2 additions and changes. everything not listed keeps its v1 value
 
 | Resource | Value | Past it |
 | --- | --- | --- |
-| One selected file | 16 MiB; a template may lower it | refused before reading (`too_large` in the picker UI) |
+| One selected file | 32 MiB; a template may lower it | refused before reading (`too_large` in the picker UI) |
 | Live file handles per canvas | 4 | a new selection is refused (`limit`) |
-| Aggregate file bytes per canvas | 32 MiB | a new selection is refused (`limit`) |
+| Aggregate file bytes per canvas | 40 MiB | a new selection is refused (`limit`) |
 | A server `on_file` call's handle | 1, call-scoped | n/a |
 | One `file_read` | 64 KiB | `too_large` |
 | File pickers per template | 8, uniquely named | refused at upload |
