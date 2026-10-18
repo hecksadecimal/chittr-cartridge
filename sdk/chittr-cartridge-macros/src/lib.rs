@@ -20,6 +20,8 @@ const HOOK_NAMES: &[&str] = &[
     "on_view",
     "on_timer",
     "on_canvas_message",
+    "on_file",
+    "render_config",
 ];
 
 #[proc_macro_attribute]

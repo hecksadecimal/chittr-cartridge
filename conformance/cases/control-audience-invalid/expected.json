@@ -1,0 +1,1 @@
+{"ok":false,"error":"manifest.json: Control \"vote\" audience must be one of public, owner, admin or owner_or_admin"}

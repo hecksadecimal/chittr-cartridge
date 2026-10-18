@@ -47,7 +47,8 @@
       "mutualsOnlyMessages": false,
       "isPoster": false,
       "isPosterUser": false,
-      "isAdmin": false
+      "isAdmin": false,
+      "isSuspended": false
     }
   ],
   "CartridgeVersionRef": [
@@ -74,6 +75,24 @@
         "id": "chitt-1",
         "posterId": "character-1",
         "createdAt": "2026-10-16T00:00:00.000Z"
+      }
+    },
+    {
+      "v": 2,
+      "hook": "init",
+      "chitt": {
+        "id": "chitt-1",
+        "posterId": "poster-1",
+        "createdAt": "2026-10-01T00:00:00Z"
+      },
+      "capabilities": [
+        "files.server"
+      ],
+      "limits": {
+        "maxFileBytes": 16777216,
+        "maxFileReadBytes": 65536,
+        "maxFileHandles": 1,
+        "maxPickers": 8
       }
     }
   ],
@@ -129,7 +148,8 @@
         "mutualsOnlyMessages": false,
         "isPoster": false,
         "isPosterUser": false,
-        "isAdmin": false
+        "isAdmin": false,
+        "isSuspended": false
       }
     }
   ],
@@ -857,6 +877,101 @@
     {
       "key": "views",
       "value": "MQ=="
+    }
+  ],
+  "FileRef": [
+    {
+      "id": "f_1",
+      "filename": "doom1.wad",
+      "mimeType": "application/octet-stream",
+      "size": 14445628
+    }
+  ],
+  "FileInput": [
+    {
+      "v": 2,
+      "hook": "on_file",
+      "chitt": {
+        "id": "chitt-1",
+        "posterId": "poster-1",
+        "createdAt": "2026-10-01T00:00:00Z"
+      },
+      "observer": {
+        "characterId": "character-1",
+        "userId": "user-1",
+        "name": "Mabel",
+        "followsPoster": false,
+        "followedByPoster": false,
+        "showOoc": false,
+        "doNotDisturb": false,
+        "mutualsOnlyMessages": false,
+        "isPoster": false,
+        "isPosterUser": false,
+        "isAdmin": false,
+        "isSuspended": false
+      },
+      "surface": "card",
+      "name": "wad",
+      "file": {
+        "id": "f_1",
+        "filename": "doom1.wad",
+        "mimeType": "application/octet-stream",
+        "size": 14445628
+      }
+    }
+  ],
+  "FileOutput": [
+    {},
+    {
+      "rerender": true
+    }
+  ],
+  "ConfigAccess": [
+    {
+      "audience": "owner_or_admin",
+      "isOwner": true,
+      "isAdmin": false,
+      "canConfigure": true
+    }
+  ],
+  "RenderConfigInput": [
+    {
+      "v": 2,
+      "hook": "render_config",
+      "chitt": {
+        "id": "chitt-1",
+        "posterId": "poster-1",
+        "createdAt": "2026-10-01T00:00:00Z"
+      },
+      "observer": {
+        "characterId": "character-1",
+        "userId": "user-1",
+        "name": "Mabel",
+        "followsPoster": false,
+        "followedByPoster": false,
+        "showOoc": false,
+        "doNotDisturb": false,
+        "mutualsOnlyMessages": false,
+        "isPoster": false,
+        "isPosterUser": false,
+        "isAdmin": false,
+        "isSuspended": false
+      },
+      "surface": "config",
+      "access": {
+        "audience": "owner_or_admin",
+        "isOwner": true,
+        "isAdmin": false,
+        "canConfigure": true
+      }
+    }
+  ],
+  "RenderConfigOutput": [
+    {},
+    {
+      "data": {
+        "scores": []
+      }
     }
   ]
 }

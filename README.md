@@ -88,6 +88,9 @@ walks u thru it.
 cargo build                       # the SDK and its macros
 cargo test --workspace --all-features
 cargo test --manifest-path examples/poll/Cargo.toml   # the poll's Hooks, run natively
+cargo test --manifest-path examples/hurtle/Cargo.toml # Hurtle's Hooks and suspension behavior
+cargo test --manifest-path examples/breakout/Cargo.toml # Breakout's leaderboard logic
+cargo test --manifest-path examples/breakout/canvas/Cargo.toml # Breakout's levels and power-ups
 sh scripts/build-examples.sh      # every example's Server Guest and Canvas Guest, as wasm
 ```
 
@@ -99,9 +102,12 @@ the examples:
 | Example | What it shows |
 | --- | --- |
 | `examples/hello` | The smallest Server Guest: `init` and `render`, no Canvas Guest. |
-| `examples/poll` | A poll with a Control, a Canvas Guest bar chart, a gate on replies, and a timer that announces the result. The reference for scaffolding, and for testing Hooks with `cargo test`. |
+| `examples/doom` | The original DOOM engine's first episode, with keyboard input, fullscreen and silent audio. Optional local WAD and WASI SDK build; an asset-free scaffold otherwise. |
+| `examples/poll` | An admin-configured poll with a waiting state, transparent Canvas Guest answer buttons, a gate on replies, and a timer that announces the result. The reference for scaffolding, and for testing Hooks with `cargo test`. |
 | `examples/snake` | A playable Snake game in a Canvas Guest, with a leaderboard in the Server Guest. |
-| `examples/paint` | A shared pixel canvas, stored in the Server Guest's KV store and pushed to viewers. |
+| `examples/hurtle` | A Wordle-style Canvas game that requests a 15-minute suspension after six failed guesses, through the poster's permission-checked admin action. |
+| `examples/paint` | Place: an r/place-style shared pixel board with a cooldown, stamped KV tiles, paced tile loading and fullscreen. |
+| `examples/breakout` | A 32×32 square-brick Breakout Canvas Guest with power-ups, particles, fullscreen, a KV-backed level editor (any brick colour) for the poster, and daily and all-time top-five leaderboards. |
 
 ## The CLI
 
@@ -178,6 +184,7 @@ conformance corpus), every example built to wasm, the poll's Hook tests, and `ch
 
 ## Documentation
 
+- [`docs/cartridges/v2/proposal.md`](docs/cartridges/v2/proposal.md): draft ABI v2 proposal for template-owned file pickers, scoped binary reads, efficient framebuffers, capabilities, an optional owner/admin `config.liquid` surface, and sandbox-preserving extensions; not implemented.
 - [`docs/cartridges/v1/quickstart.md`](docs/cartridges/v1/quickstart.md): from an empty folder to a packed Cartridge.
 - [`docs/cartridges/v1/guide.md`](docs/cartridges/v1/guide.md): the SDK, piece by piece, and how to test Hooks natively.
 - [`docs/cartridges/v1/limits.md`](docs/cartridges/v1/limits.md): every limit an author runs into, with its number.
@@ -195,7 +202,7 @@ conformance/                  the conformance corpus the CLI's validator is test
 sdk/chittr-cartridge          the guest SDK (Server Guests, Canvas Guests with the `canvas` feature, and the `testing` feature)
 sdk/chittr-cartridge-macros   the #[hook] attribute
 docs/cartridges/v1            the ABI, quickstart, guide, limits, cookbook, design notes and schemas
-examples/                     hello, poll, snake and paint
+examples/                     hello, poll, snake, hurtle, paint, breakout and doom
 scripts/build-examples.sh     builds every example to wasm
 scripts/package-release.sh    packages one release zip of the CLI
 .github/workflows             the CI and release workflows
@@ -204,3 +211,4 @@ scripts/package-release.sh    packages one release zip of the CLI
 ## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT), at your option.
+The DOOM port in `examples/doom` is GPL-2.0; see its README and `engine/LICENSE.TXT`. WAD game data has separate licensing and is not included in the repository.

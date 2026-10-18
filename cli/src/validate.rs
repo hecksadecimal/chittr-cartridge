@@ -58,7 +58,7 @@ pub fn validate_with(bytes: &[u8], limits: &Limits) -> Result<Cartridge> {
     let manifest_bytes = required(&contents, "manifest.json")?;
     let manifest = manifest::parse(manifest_bytes, &asset_names)?;
     let server_wasm = required(&contents, "server.wasm")?;
-    let hooks = wasm::check_server(server_wasm)?;
+    let hooks = wasm::check_server(server_wasm, manifest.abi)?;
     let mut warnings = Vec::new();
     if !hooks.iter().any(|name| name == "init") {
         warnings.push(NO_INIT_WARNING.to_string());
@@ -67,8 +67,14 @@ pub fn validate_with(bytes: &[u8], limits: &Limits) -> Result<Cartridge> {
     if let Some(canvas) = canvas_wasm {
         wasm::check_canvas(canvas)?;
     }
+    if manifest.abi >= 2 && manifest.capabilities.declares_canvas() && canvas_wasm.is_none() {
+        return fail(
+            "manifest.json",
+            r#"declares "capabilities.canvas" but the Cartridge has no canvas.wasm"#,
+        );
+    }
 
-    let templates = parse_templates(&plan.templates, &contents, &manifest.controls)?;
+    let templates = parse_templates(&plan.templates, &contents, &manifest.controls, manifest.abi)?;
     check_canvas_placement(&templates, canvas_wasm.is_some())?;
 
     let assets = plan
@@ -98,6 +104,7 @@ fn parse_templates(
     templates: &[(String, archive::Entry)],
     contents: &HashMap<&str, Vec<u8>>,
     controls: &ControlDeclarations,
+    abi: u32,
 ) -> Result<Vec<(String, String)>> {
     if templates.is_empty() {
         return fail("cartridge", "has no templates/*.liquid files");
@@ -107,8 +114,23 @@ fn parse_templates(
         let file = format!("templates/{name}.liquid");
         let source = std::str::from_utf8(&contents[entry.name.as_str()])
             .map_err(|_| CartridgeError::new(file.as_str(), "is not valid UTF-8"))?;
+        if abi < 2 {
+            if name == "config" {
+                return fail(
+                    file.as_str(),
+                    r#"is only allowed when "v" is 2"#,
+                );
+            }
+            if source.contains("<lc-file") {
+                return fail(file.as_str(), r#"<lc-file> is only allowed when "v" is 2"#);
+            }
+        }
         templates::parse(&file, source)?;
-        templates::check_controls(&file, source, controls)?;
+        let config_surface = name == "config";
+        templates::check_controls(&file, source, controls, config_surface)?;
+        if abi >= 2 {
+            templates::check_file_pickers(&file, source)?;
+        }
         out.push((name.clone(), source.to_string()));
     }
     Ok(out)

@@ -1,0 +1,1 @@
+{"ok":false,"error":"templates/config.liquid: uses the public Control \"vote\" in a configuration template; give it an \"audience\" of owner, admin or owner_or_admin, or move it to card.liquid"}

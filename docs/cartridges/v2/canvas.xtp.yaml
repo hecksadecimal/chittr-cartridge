@@ -1,0 +1,553 @@
+# The Canvas Guest's Cartridge ABI v2 as an XTP schema (XTP schema version v1-draft): what the host calls (exports) and what a Canvas
+# Guest may import (imports, its host functions). See design.md and abi.md in this directory. A host that drifts
+# from these schemas is not running Cartridge ABI v2.
+#
+# Shape rules: every export and host function takes and returns one application/json object, with
+# failures as an error field, never a trap. The one exception is submit, which takes the command buffer as
+# application/x-binary and returns nothing. Event payloads are one object with a type field; XTP has no
+# union, so the fields of every event type are listed together and each event's description says which apply.
+# Objects whose fields are all optional say `required: []`, and every host function's output does, so an `error`
+# answer alone reads (the Rust generator, xtp plugin init, makes an object with no required list all-required).
+version: v1-draft
+exports:
+  start:
+    description: Runs once when the canvas starts, after the worker is ready. Draw in backing-store pixels.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasStartInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasReply"
+  frame:
+    description: Runs once per frame, and only after the guest called request_frame, never faster than the effective rate.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasFrameInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasReply"
+  event:
+    description: Runs for each input or state event the host delivers (optional export).
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasEventInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasReply"
+imports:
+  submit:
+    description: Plays one frame's draw ops. The only path to the canvas. Malformed bytes crash the canvas. Takes the binary command buffer and returns nothing.
+    input:
+      contentType: application/x-binary
+      type: buffer
+  request_frame:
+    description: Asks for one more frame. A guest that animates calls it again each frame. Takes no input.
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasHostReply"
+  set_fps:
+    description: Sets the requested frame rate at any time. Clamped to 1 to 60, and reduced motion caps it at 15.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/SetFpsInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasHostReply"
+  measure_text:
+    description: Measures text in the font that a font declaration of the same family, size and weight would select. Results are in pixels.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/MeasureTextInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/MeasureTextOutput"
+  send:
+    description: Sends one message to the Server Guest's on_canvas_message. The answer comes later as a reply or error event with the same seq. At most 4 in flight, and at most 4 KiB of JSON per message.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasSendInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasHostReply"
+  load_image:
+    description: Loads an image from the Cartridge's assets, once per path, and returns its handle. The page decodes it in the background and the guest gets an image_loaded event (or an error event). Paths must be under assets/.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasLoadInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasLoadOutput"
+  load_sound:
+    description: Loads a sound from the Cartridge's assets, once per path, and returns its handle. The page decodes it in the background and the guest gets a sound_loaded event (or an error event).
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasLoadInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasLoadOutput"
+  play_sound:
+    description: Plays a loaded sound and returns its playback id. At most 8 sounds play at once, and calls made while the canvas is muted or off-screen return an id and play nothing.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasPlaySoundInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasPlaySoundOutput"
+  stop_sound:
+    description: Stops a playing sound by its playback id. An id that is not playing is a no-op.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasStopSoundInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/CanvasHostReply"
+  file_read:
+    description: Reads a bounded piece of a client-local file the host delivered. The handle is scoped to this canvas instance. At most 64 KiB per read; the bytes come back base64 encoded.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/FileReadInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/FileReadOutput"
+  file_close:
+    description: Releases a client-local file handle early. Closing an unknown or already-closed handle is harmless.
+    input:
+      contentType: application/json
+      $ref: "#/components/schemas/FileCloseInput"
+    output:
+      contentType: application/json
+      $ref: "#/components/schemas/FileCloseOutput"
+components:
+  schemas:
+    HookError:
+      description: A failure the Canvas Guest reports itself, returned as the error field of an export's output. The host counts it as a crash.
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: The guest's own code. At most 64 characters.
+        message:
+          type: string
+          description: Plain text for the failure log. The host keeps the first 1024 characters.
+    CanvasReply:
+      description: The return of every export. The normal return is an empty object, which is represented here by the optional error alone.
+      required: []
+      properties:
+        error:
+          $ref: "#/components/schemas/HookError"
+    CanvasErrorCode:
+      description: Why a host function failed. send reports busy and too_large; the media functions report busy, limit, not_loaded and load_failed; the file functions report not_found, too_large and not_supported.
+      type: string
+      enum:
+        - not_running
+        - invalid
+        - host
+        - busy
+        - too_large
+        - limit
+        - not_loaded
+        - load_failed
+        - not_found
+        - not_supported
+    CanvasError:
+      description: A failed host function call.
+      required:
+        - code
+        - message
+      properties:
+        code:
+          $ref: "#/components/schemas/CanvasErrorCode"
+        message:
+          type: string
+          description: Plain text explaining the failure.
+    CanvasHostReply:
+      description: The return of a host function that only reports success or failure. The normal return is an empty object, which is represented here by the optional error alone.
+      required: []
+      properties:
+        error:
+          $ref: "#/components/schemas/CanvasError"
+    CanvasStartInput:
+      description: Input to start. Width and height are the backing store's size in device pixels, capped at 2048 per side with the aspect ratio kept. capabilities and limits report the effective v2 support for this canvas.
+      required:
+        - width
+        - height
+        - dpr
+        - prefersReducedMotion
+        - state
+        - fullscreen
+        - capabilities
+        - limits
+      properties:
+        width:
+          type: integer
+          format: int32
+          description: The backing store's width in device pixels.
+        height:
+          type: integer
+          format: int32
+          description: The backing store's height in device pixels.
+        dpr:
+          type: number
+          format: double
+          description: The device pixel ratio.
+        prefersReducedMotion:
+          type: boolean
+          description: Whether the Observer's system asks for reduced motion.
+        state:
+          type: object
+          nullable: true
+          description: The render's canvas value, or null. JSON of at most 16 KiB. XTP has no untyped value, so this is typed as an object; the host passes any JSON that fits.
+        fullscreen:
+          type: boolean
+          description: Whether the canvas is shown full screen.
+        capabilities:
+          type: array
+          description: The effective capabilities the host grants this Canvas Guest. A capability the host does not support is absent, even when the manifest declared it optional.
+          items:
+            type: string
+        limits:
+          $ref: "#/components/schemas/CanvasLimits"
+    CanvasFrameInput:
+      description: Input to frame.
+      required:
+        - t
+        - dt
+      properties:
+        t:
+          type: number
+          format: double
+          description: The frame's time in milliseconds since the page's time origin.
+        dt:
+          type: number
+          format: double
+          description: The time in milliseconds since the previous frame.
+    CanvasEventType:
+      description: The event types a Canvas Guest receives in v2. A guest ignores types it does not know.
+      type: string
+      enum:
+        - state
+        - resize
+        - visibility
+        - pointer
+        - key
+        - focus
+        - blur
+        - reply
+        - error
+        - image_loaded
+        - sound_loaded
+        - file
+    CanvasEventInput:
+      description: Input to event. Type says which event it is, and only the fields that event describes are present. state carries state; resize carries width, height and fullscreen; visibility carries visible; pointer carries action (down, move, up or cancel), x, y, width, height, pointerId, pointerType (mouse, touch or pen) and buttons; key carries action (down or up), key and code; focus and blur carry nothing; reply carries reply and seq; error carries handle (for a load), code, message and seq; image_loaded carries handle, width and height; sound_loaded carries handle; file carries name and file.
+      required:
+        - type
+      properties:
+        type:
+          $ref: "#/components/schemas/CanvasEventType"
+        state:
+          type: object
+          nullable: true
+          description: The render's canvas value, for a state event. XTP has no untyped value, so this is typed as an object.
+        width:
+          type: number
+          format: double
+          description: The canvas width in device pixels for a resize, or in CSS pixels for a pointer.
+        height:
+          type: number
+          format: double
+          description: The canvas height, in device pixels for a resize or CSS pixels for a pointer.
+        fullscreen:
+          type: boolean
+          description: Whether the canvas is full screen, for a resize.
+        visible:
+          type: boolean
+          description: Whether the canvas is visible, for a visibility event.
+        action:
+          type: string
+          description: For a pointer, down, move, up or cancel. For a key, down or up.
+        x:
+          type: number
+          format: double
+          description: The pointer's x in CSS pixels, relative to the canvas element.
+        y:
+          type: number
+          format: double
+          description: The pointer's y in CSS pixels, relative to the canvas element.
+        pointerId:
+          type: integer
+          format: int32
+          description: The pointer's id, for a pointer event.
+        pointerType:
+          type: string
+          description: For a pointer event, mouse, touch or pen.
+        buttons:
+          type: integer
+          format: int32
+          description: The DOM button bitmask, for a pointer event.
+        key:
+          type: string
+          description: The DOM key, for a key event, at most 32 characters.
+        code:
+          type: string
+          description: The DOM code for a key event, or the error code for an error event.
+        message:
+          type: string
+          description: The message for an error event.
+        reply:
+          type: object
+          description: The answer to a send, for a reply event. XTP has no untyped value, so this is typed as an object; the host passes any JSON.
+        seq:
+          type: integer
+          format: int32
+          description: The sequence number the send carried, on a reply or error event. Absent when the send had none.
+        handle:
+          type: integer
+          format: int32
+          description: The asset handle a load returned, on image_loaded, sound_loaded and a load's error event.
+        name:
+          type: string
+          description: The picker name, for a file event.
+        file:
+          $ref: "#/components/schemas/FileRef"
+    SetFpsInput:
+      description: Input to set_fps.
+      required:
+        - fps
+      properties:
+        fps:
+          type: integer
+          format: int32
+          description: The requested frame rate. The host clamps it to 1 to 60.
+    MeasureTextInput:
+      description: Input to measure_text.
+      required:
+        - family
+        - size
+        - weight
+        - text
+      properties:
+        family:
+          type: string
+          description: A manifest font's name, or anything else for sans-serif.
+        size:
+          type: number
+          format: double
+          description: The font size in pixels, clamped to 1 to 1024.
+        weight:
+          type: number
+          format: double
+          description: The font weight, clamped to 100 to 900.
+        text:
+          type: string
+          description: The text to measure, at most 64 KiB.
+    MeasureTextOutput:
+      description: Output of measure_text, in pixels. The metrics are absent when error is set.
+      required: []
+      properties:
+        width:
+          type: number
+          format: double
+          description: The advance width.
+        ascent:
+          type: number
+          format: double
+          description: The ascent above the baseline.
+        descent:
+          type: number
+          format: double
+          description: The descent below the baseline.
+        error:
+          $ref: "#/components/schemas/CanvasError"
+    CanvasSendInput:
+      description: Input to send. The message is the JSON the Server Guest receives, and seq is echoed on the answer.
+      required:
+        - message
+      properties:
+        message:
+          type: object
+          description: The message, at most 4 KiB of JSON. XTP has no untyped value, so this is typed as an object; the host passes any JSON that fits.
+        seq:
+          type: integer
+          format: int32
+          description: A sequence number the answer echoes. Absent when the guest does not need one.
+    CanvasLoadInput:
+      description: Input to load_image and load_sound.
+      required:
+        - path
+      properties:
+        path:
+          type: string
+          description: The asset's path under assets/, such as pizza.webp.
+    CanvasLoadOutput:
+      description: Output of load_image and load_sound. The handle identifies the asset in later calls and events.
+      required: []
+      properties:
+        handle:
+          type: integer
+          format: int32
+          description: The asset's handle. Absent when error is set.
+        error:
+          $ref: "#/components/schemas/CanvasError"
+    CanvasPlaySoundInput:
+      description: Input to play_sound.
+      required:
+        - handle
+      properties:
+        handle:
+          type: integer
+          format: int32
+          description: The sound's handle from load_sound. The sound must have loaded (a sound_loaded event) before it plays.
+        volume:
+          type: number
+          format: double
+          description: The volume from 0 to 1. Absent means 1; the host clamps out-of-range values.
+        loop:
+          type: boolean
+          description: Whether the sound repeats until stop_sound. Absent means false.
+    CanvasPlaySoundOutput:
+      description: Output of play_sound. The id identifies the playback to stop_sound.
+      required: []
+      properties:
+        id:
+          type: integer
+          format: int32
+          description: The playback id. Absent when error is set.
+        error:
+          $ref: "#/components/schemas/CanvasError"
+    CanvasStopSoundInput:
+      description: Input to stop_sound.
+      required:
+        - id
+      properties:
+        id:
+          type: integer
+          format: int32
+          description: The playback id that play_sound returned.
+    # ---- v2: capabilities and files ---------------------------------------------------------------------------
+    CanvasLimits:
+      description: The effective v2 resource limits for a Canvas Guest. The numbers may differ from the documented defaults, so a guest reads them here rather than hard-coding them.
+      required:
+        - maxFileBytes
+        - maxFileReadBytes
+        - maxFileHandles
+        - maxFileBytesPerCanvas
+        - maxPickers
+        - maxFramebufferPixels
+        - maxPaletteEntries
+      properties:
+        maxFileBytes:
+          type: integer
+          format: int64
+          description: The largest file a picker may deliver, in bytes.
+        maxFileReadBytes:
+          type: integer
+          format: int64
+          description: The largest file_read chunk, in bytes.
+        maxFileHandles:
+          type: integer
+          format: int32
+          description: The live client file handles allowed for this canvas.
+        maxFileBytesPerCanvas:
+          type: integer
+          format: int64
+          description: The aggregate bytes of all live client file handles for this canvas.
+        maxPickers:
+          type: integer
+          format: int32
+          description: The file pickers allowed per template.
+        maxFramebufferPixels:
+          type: integer
+          format: int32
+          description: The largest w times h a framebuffer blit may present.
+        maxPaletteEntries:
+          type: integer
+          format: int32
+          description: The largest palette an indexed blit may carry.
+    FileRef:
+      description: Metadata for a client-local file the host delivered. The id is an opaque handle scoped to this canvas instance; the file's bytes are never part of a JSON envelope.
+      required:
+        - id
+        - filename
+        - mimeType
+        - size
+      properties:
+        id:
+          type: string
+          description: The opaque handle, scoped to this canvas instance.
+        filename:
+          type: string
+          description: The display name the browser reported. It is never a path and never trusted for content type.
+        mimeType:
+          type: string
+          description: The MIME type the browser reported. It is a hint only, never validation.
+        size:
+          type: integer
+          format: int64
+          description: The file's byte length as the host measured it, not as the client claimed it.
+    FileErrorCode:
+      description: Why a file host function failed. not_found covers unknown, closed, expired and foreign handles.
+      type: string
+      enum:
+        - invalid
+        - not_found
+        - too_large
+        - not_supported
+        - host
+    FileError:
+      description: A failed file_read or file_close call.
+      required:
+        - code
+        - message
+      properties:
+        code:
+          $ref: "#/components/schemas/FileErrorCode"
+        message:
+          type: string
+          description: Plain text explaining the failure.
+    FileReadInput:
+      description: Input to file_read. Reads at most 64 KiB from a client-local file handle; the result clips at EOF.
+      required:
+        - handle
+        - offset
+        - length
+      properties:
+        handle:
+          type: string
+          description: The handle a file event delivered.
+        offset:
+          type: integer
+          format: int64
+          description: The byte offset to read from. Non-negative; an offset past the end is invalid.
+        length:
+          type: integer
+          format: int64
+          description: The number of bytes to read, 1 to 65536. Over the cap is too_large, not a clamp.
+    FileReadOutput:
+      description: Output of file_read. bytes is a bounded chunk, base64 encoded, never the whole file. eof is true when the read reached the end.
+      required: []
+      properties:
+        bytes:
+          type: string
+          format: byte
+          description: The bytes read, base64 encoded. At most 64 KiB before encoding, and empty at EOF.
+        eof:
+          type: boolean
+          description: True when the read reached the end of the file.
+        error:
+          $ref: "#/components/schemas/FileError"
+    FileCloseInput:
+      description: Input to file_close.
+      required:
+        - handle
+      properties:
+        handle:
+          type: string
+          description: The handle to release. Closing an unknown or already-closed handle is harmless.
+    FileCloseOutput:
+      description: Output of file_close. The normal return is an empty object.
+      required: []
+      properties:
+        error:
+          $ref: "#/components/schemas/FileError"

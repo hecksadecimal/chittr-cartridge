@@ -9,21 +9,52 @@ use serde_json::{Map, Value};
 use crate::controls::{self, ControlDeclarations};
 use crate::error::{fail, js_len, Result};
 
-const MANIFEST_VERSION: f64 = 1.0;
-const KEYS: [&str; 5] = ["v", "name", "version", "fonts", "controls"];
+const KEYS: [&str; 6] = ["v", "name", "version", "fonts", "controls", "capabilities"];
 const NAME_MAX: usize = 80;
 const VERSION_MAX: usize = 40;
+
+/// Capability ids a Server Guest may declare (ABI v2).
+const SERVER_CAPABILITIES: &[&str] = &["files.server", "clock.monotonic"];
+/// Capability ids a Canvas Guest may declare (ABI v2).
+const CANVAS_CAPABILITIES: &[&str] = &[
+    "files.client",
+    "framebuffer.rgba8",
+    "framebuffer.indexed8",
+    "clock.monotonic",
+    "input.relative-pointer",
+    "audio.pcm",
+];
 
 static FONT_NAME: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$").expect("valid regex"));
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Manifest {
+    /// The Cartridge ABI version: 1 or 2.
+    pub abi: u32,
     pub name: String,
     pub version: String,
     /// Font name to its file, relative to `assets/`, in manifest order.
     pub fonts: Vec<(String, String)>,
     pub controls: ControlDeclarations,
+    /// The declared capabilities (ABI v2). Empty for v1.
+    pub capabilities: Capabilities,
+}
+
+/// The capabilities a v2 manifest declares, per guest and split into required and optional.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Capabilities {
+    pub server_require: Vec<String>,
+    pub server_optional: Vec<String>,
+    pub canvas_require: Vec<String>,
+    pub canvas_optional: Vec<String>,
+}
+
+impl Capabilities {
+    /// Whether a `canvas` capability block was declared at all.
+    pub fn declares_canvas(&self) -> bool {
+        !self.canvas_require.is_empty() || !self.canvas_optional.is_empty()
+    }
 }
 
 /// Validates `manifest.json`. `assets` holds the archive's asset entries, as `assets/...` names.
@@ -46,21 +77,118 @@ pub fn parse(bytes: &[u8], assets: &HashSet<String>) -> Result<Manifest> {
             ),
         );
     }
-    match map.get("v") {
+    let abi = match map.get("v") {
         None => return fail(FILE, r#"is missing "v""#),
-        Some(v) if v.as_f64() != Some(MANIFEST_VERSION) => return fail(FILE, r#""v" must be 1"#),
-        Some(_) => {}
-    }
+        Some(v) => match v.as_f64() {
+            Some(version) if version == 1.0 => 1,
+            Some(version) if version == 2.0 => 2,
+            _ => return fail(FILE, r#""v" must be 1 or 2"#),
+        },
+    };
     let name = require_string(map, "name", NAME_MAX)?;
     let version = require_string(map, "version", VERSION_MAX)?;
     let fonts = parse_fonts(map.get("fonts"), assets)?;
     let controls = controls::parse(map.get("controls")).or_else(|message| fail(FILE, message))?;
+    let capabilities =
+        parse_capabilities(map.get("capabilities"), abi).or_else(|message| fail(FILE, message))?;
     Ok(Manifest {
+        abi,
         name,
         version,
         fonts,
         controls,
+        capabilities,
     })
+}
+
+/// Parses the manifest's `capabilities` (ABI v2). A v1 manifest must not carry them.
+fn parse_capabilities(value: Option<&Value>, abi: u32) -> std::result::Result<Capabilities, String> {
+    if abi < 2 {
+        if value.is_some() {
+            return Err(r#""capabilities" is only allowed when "v" is 2"#.to_string());
+        }
+        return Ok(Capabilities::default());
+    }
+    let Some(value) = value else {
+        return Ok(Capabilities::default());
+    };
+    let Some(map) = value.as_object() else {
+        return Err(
+            r#""capabilities" must be an object mapping a guest to its capabilities"#.to_string(),
+        );
+    };
+    let mut out = Capabilities::default();
+    for (guest, spec) in map {
+        let allowed: &[&str] = match guest.as_str() {
+            "server" => SERVER_CAPABILITIES,
+            "canvas" => CANVAS_CAPABILITIES,
+            other => {
+                return Err(format!(
+                    r#""capabilities" has an unknown guest "{other}"; allowed guests are server, canvas"#
+                ))
+            }
+        };
+        let Some(spec) = spec.as_object() else {
+            return Err(format!(r#""capabilities.{guest}" must be an object"#));
+        };
+        if let Some(unknown) = spec
+            .keys()
+            .find(|key| key.as_str() != "require" && key.as_str() != "optional")
+        {
+            return Err(format!(
+                r#""capabilities.{guest}" has an unknown key "{unknown}"; allowed keys are require, optional"#
+            ));
+        }
+        let require = capability_list(guest, "require", spec.get("require"), allowed)?;
+        let optional = capability_list(guest, "optional", spec.get("optional"), allowed)?;
+        if let Some(shared) = require.iter().find(|id| optional.contains(id)) {
+            return Err(format!(
+                r#""capabilities.{guest}" lists "{shared}" as both required and optional"#
+            ));
+        }
+        match guest.as_str() {
+            "server" => {
+                out.server_require = require;
+                out.server_optional = optional;
+            }
+            _ => {
+                out.canvas_require = require;
+                out.canvas_optional = optional;
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn capability_list(
+    guest: &str,
+    key: &str,
+    value: Option<&Value>,
+    allowed: &[&str],
+) -> std::result::Result<Vec<String>, String> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let Some(items) = value.as_array() else {
+        return Err(format!(r#""capabilities.{guest}.{key}" must be an array"#));
+    };
+    let mut out = Vec::new();
+    for item in items {
+        let Some(id) = item.as_str() else {
+            return Err(format!(r#""capabilities.{guest}.{key}" entries must be strings"#));
+        };
+        if !allowed.contains(&id) {
+            return Err(format!(
+                r#""capabilities.{guest}.{key}" has an unknown capability "{id}"; allowed ids are {}"#,
+                allowed.join(", ")
+            ));
+        }
+        if out.iter().any(|existing| existing == id) {
+            return Err(format!(r#""capabilities.{guest}.{key}" repeats "{id}""#));
+        }
+        out.push(id.to_string());
+    }
+    Ok(out)
 }
 
 fn require_string(map: &Map<String, Value>, key: &str, max: usize) -> Result<String> {

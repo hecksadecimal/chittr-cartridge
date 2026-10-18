@@ -62,6 +62,7 @@ impl From<Result<(), CanvasError>> for Reply {
 }
 
 /// Input to `start`. `state` is the render's `canvas` value, or null. Width and height are backing-store pixels.
+/// In ABI v2 it also carries the effective capabilities and resource limits; a v1 host omits both.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartInput {
@@ -72,6 +73,23 @@ pub struct StartInput {
     #[serde(default)]
     pub state: Value,
     pub fullscreen: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capabilities: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limits: Option<CanvasLimits>,
+}
+
+/// The effective v2 resource limits for a Canvas Guest. Read them rather than hard-coding the defaults.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanvasLimits {
+    pub max_file_bytes: u64,
+    pub max_file_read_bytes: u64,
+    pub max_file_handles: u32,
+    pub max_file_bytes_per_canvas: u64,
+    pub max_pickers: u32,
+    pub max_framebuffer_pixels: u32,
+    pub max_palette_entries: u32,
 }
 
 /// Input to `frame`: the frame's time in ms since the page's time origin, and the time since the last frame.
@@ -81,13 +99,36 @@ pub struct FrameInput {
     pub dt: f64,
 }
 
-/// Input to `event`: `type` names the event, and the rest of its fields are beside it. Types in v1: `state`
-/// (with `state`), `resize` (`width`, `height`, `fullscreen`) and `visibility` (`visible`). Unknown types are
-/// ignored by the guest.
+/// Input to `event`: `type` names the event, and the rest of its fields are beside it. Types in v2: `state`
+/// (with `state`), `resize` (`width`, `height`, `fullscreen`), `visibility` (`visible`) and `file` (`name`, `file`).
+/// Unknown types are ignored by the guest.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EventInput {
     #[serde(rename = "type")]
     pub kind: String,
     #[serde(flatten)]
     pub rest: Map<String, Value>,
+}
+
+/// Metadata for a client-local file the host delivered (ABI v2). `id` is an opaque handle scoped to this canvas
+/// instance; the bytes never travel in an envelope.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileRef {
+    pub id: String,
+    pub filename: String,
+    pub mime_type: String,
+    pub size: u64,
+}
+
+impl EventInput {
+    /// The picker name and file metadata of a `file` event, or `None` for any other event.
+    pub fn file(&self) -> Option<(String, FileRef)> {
+        if self.kind != "file" {
+            return None;
+        }
+        let name = self.rest.get("name")?.as_str()?.to_string();
+        let file = serde_json::from_value(self.rest.get("file")?.clone()).ok()?;
+        Some((name, file))
+    }
 }

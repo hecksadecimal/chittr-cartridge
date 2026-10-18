@@ -32,6 +32,7 @@ const TIMER_DELAY_MAX: u64 = 30 * 24 * 60 * 60;
 const PUSH_TARGETS_MAX: usize = 20;
 const ACTIONS_PER_MINUTE: usize = 30;
 const ASSET_BYTES_MAX: usize = 4 * 1024 * 1024;
+const FILE_READ_MAX: usize = 64 * 1024;
 
 /// The kind of Hook a test is running, which sets the limits its host calls face. Set it with
 /// `TestHost::begin_hook`. The default, `Background`, is the class of `on_timer`, `on_view` and the canvas hook.
@@ -113,6 +114,7 @@ pub(crate) struct State {
     kv: BTreeMap<String, Entry>,
     timers: BTreeMap<String, Timer>,
     assets: BTreeMap<String, Vec<u8>>,
+    files: BTreeMap<String, Vec<u8>>,
     refusals: BTreeMap<String, (String, String)>,
     actions: Vec<RecordedAction>,
     pushes: Vec<PushTarget>,
@@ -131,6 +133,7 @@ impl State {
             kv: BTreeMap::new(),
             timers: BTreeMap::new(),
             assets: BTreeMap::new(),
+            files: BTreeMap::new(),
             refusals: BTreeMap::new(),
             actions: Vec::new(),
             pushes: Vec::new(),
@@ -211,6 +214,8 @@ impl State {
             "cancel_timer" => self.cancel_timer(&args),
             "push_render" => self.push_render(&args),
             "asset" => self.asset(&args),
+            "file_read" => self.file_read(&args),
+            "file_close" => self.file_close(&args),
             _ => self.poster_action(name, args),
         }
     }
@@ -441,6 +446,38 @@ impl State {
         }
     }
 
+    /// `file_read` (ABI v2): one bounded chunk of a delivered file, clipped at EOF.
+    fn file_read(&mut self, args: &Value) -> Value {
+        let handle = match args.get("handle").and_then(Value::as_str) {
+            Some(handle) => handle,
+            None => return fail("invalid", "handle must be a string"),
+        };
+        let Some(bytes) = self.files.get(handle) else {
+            return fail("not_found", "no such file handle");
+        };
+        let offset = args.get("offset").and_then(Value::as_u64).unwrap_or(0);
+        let length = args.get("length").and_then(Value::as_u64).unwrap_or(0);
+        if length == 0 || length > FILE_READ_MAX as u64 {
+            return fail("too_large", "length must be an integer from 1 to 65536");
+        }
+        let size = bytes.len() as u64;
+        if offset > size {
+            return fail("invalid", "offset is past the end of the file");
+        }
+        let start = offset as usize;
+        let end = (offset + length).min(size) as usize;
+        let chunk = &bytes[start..end];
+        json!({ "bytes": STANDARD.encode(chunk), "eof": end as u64 == size })
+    }
+
+    /// `file_close` (ABI v2): releases a handle; unknown handles are harmless.
+    fn file_close(&mut self, args: &Value) -> Value {
+        if let Some(handle) = args.get("handle").and_then(Value::as_str) {
+            self.files.remove(handle);
+        }
+        json!({})
+    }
+
     fn poster_action(&mut self, name: &str, args: Value) -> Value {
         let limit = self.class.action_limit();
         let minute_start = self.now.saturating_sub(60);
@@ -578,6 +615,11 @@ pub(crate) fn kv_keys() -> Vec<String> {
 
 pub(crate) fn add_asset(path: &str, bytes: Vec<u8>) {
     with(|state| state.assets.insert(path.to_string(), bytes));
+}
+
+/// Registers a delivered file under `handle`, as a picker would (ABI v2).
+pub(crate) fn put_file(handle: &str, bytes: Vec<u8>) {
+    with(|state| state.files.insert(handle.to_string(), bytes));
 }
 
 pub(crate) fn timers() -> Vec<PendingTimer> {

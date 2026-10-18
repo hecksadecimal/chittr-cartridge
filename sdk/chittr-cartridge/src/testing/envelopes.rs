@@ -4,9 +4,9 @@
 use serde_json::{json, Map, Value};
 
 use crate::envelope::{
-    CanvasMessageInput, CartridgeVersionRef, ChittRef, ControlInput, InitInput, MigrateInput,
-    Observer, ReactionGateInput, RechittGateInput, RenderInput, ReplyGateInput, TimerInput,
-    ViewInput,
+    CanvasMessageInput, CartridgeVersionRef, ChittRef, ConfigAccess, ControlInput, FileInput,
+    FileRef, InitInput, MigrateInput, Observer, ReactionGateInput, RechittGateInput, RenderConfigInput,
+    RenderInput, ReplyGateInput, TimerInput, ViewInput,
 };
 use crate::ABI_VERSION;
 
@@ -52,6 +52,7 @@ pub fn observer(character_id: &str) -> Observer {
         is_poster: false,
         is_poster_user: false,
         is_admin: false,
+        is_suspended: false,
         profile,
     }
 }
@@ -78,7 +79,13 @@ fn envelope_fields(hook: &str, chitt: &ChittRef) -> (u32, String, ChittRef) {
 /// The input to `init`.
 pub fn init(chitt: &ChittRef) -> InitInput {
     let (v, hook, chitt) = envelope_fields("init", chitt);
-    InitInput { v, hook, chitt }
+    InitInput {
+        v,
+        hook,
+        chitt,
+        capabilities: Vec::new(),
+        limits: None,
+    }
 }
 
 /// The input to `render`. `observer` is `None` for a logged-out viewer.
@@ -169,9 +176,57 @@ fn control_base(chitt: &ChittRef, observer: Option<Observer>, name: &str) -> Con
         hook,
         chitt,
         observer,
+        surface: None,
         control: name.to_string(),
         value: None,
         fields: None,
+    }
+}
+
+/// A file's metadata as a picker delivers it (ABI v2).
+pub fn file_ref(id: &str, filename: &str, mime_type: &str, size: u64) -> FileRef {
+    FileRef {
+        id: id.to_string(),
+        filename: filename.to_string(),
+        mime_type: mime_type.to_string(),
+        size,
+    }
+}
+
+/// The input to `on_file`, a server-routed file from an authorized picker (ABI v2). `surface` is `card` or `config`.
+pub fn file(
+    chitt: &ChittRef,
+    observer: Option<Observer>,
+    surface: &str,
+    name: &str,
+    file: FileRef,
+) -> FileInput {
+    let (v, hook, chitt) = envelope_fields("on_file", chitt);
+    FileInput {
+        v,
+        hook,
+        chitt,
+        observer,
+        surface: surface.to_string(),
+        name: name.to_string(),
+        file,
+    }
+}
+
+/// The input to `render_config`, for an authorized owner or admin opening the configuration panel (ABI v2).
+pub fn render_config(
+    chitt: &ChittRef,
+    observer: Option<Observer>,
+    access: ConfigAccess,
+) -> RenderConfigInput {
+    let (v, hook, chitt) = envelope_fields("render_config", chitt);
+    RenderConfigInput {
+        v,
+        hook,
+        chitt,
+        observer,
+        surface: "config".to_string(),
+        access,
     }
 }
 

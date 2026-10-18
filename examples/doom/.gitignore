@@ -1,0 +1,8 @@
+target/
+canvas/target/
+.tools/
+cartridge/*.wasm
+*.cartridge
+# Game data is supplied separately; do not commit WADs.
+/cartridge/assets/doom1.wad
+*.[wW][aA][dD]

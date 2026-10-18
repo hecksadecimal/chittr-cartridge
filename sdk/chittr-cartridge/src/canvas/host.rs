@@ -6,6 +6,9 @@ use extism_pdk::{host_fn, Json};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine as _;
+
 use super::encode::CommandBuffer;
 use super::envelope::{CanvasError, Empty};
 
@@ -23,6 +26,8 @@ mod imports {
         pub fn load_sound(input: Json<PathInput>) -> Json<HandleReply>;
         pub fn play_sound(input: Json<PlaySoundInput>) -> Json<PlayReply>;
         pub fn stop_sound(input: Json<StopSoundInput>) -> Json<HostReply>;
+        pub fn file_read(input: Json<FileReadInput>) -> Json<FileReadReply>;
+        pub fn file_close(input: Json<FileCloseInput>) -> Json<HostReply>;
     }
 }
 
@@ -88,6 +93,38 @@ pub struct SendInput {
     pub message: Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seq: Option<u32>,
+}
+
+/// The input of `file_read`: a handle a `file` event delivered, and the byte range to read (v2).
+#[derive(Serialize)]
+pub struct FileReadInput {
+    pub handle: String,
+    pub offset: u64,
+    pub length: u32,
+}
+
+/// The input of `file_close` (v2).
+#[derive(Serialize)]
+pub struct FileCloseInput {
+    pub handle: String,
+}
+
+/// The reply of `file_read`: a bounded base64 chunk, whether it reached the end, or an error (v2).
+#[derive(Debug, Deserialize)]
+pub struct FileReadReply {
+    #[serde(default)]
+    pub bytes: Option<String>,
+    #[serde(default)]
+    pub eof: bool,
+    #[serde(default)]
+    pub error: Option<CanvasError>,
+}
+
+/// One bounded chunk of a file a picker delivered (v2). `bytes` is at most 64 KiB.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileChunk {
+    pub bytes: Vec<u8>,
+    pub eof: bool,
 }
 
 /// Largest buffer one `submit` may carry; the encoder checks the same limit before the call.
@@ -234,6 +271,42 @@ pub fn play_sound(handle: u32, options: PlayOptions) -> Result<u32, CanvasError>
 /// Stops one playback. An id that is not playing is a no-op.
 pub fn stop_sound(id: u32) -> Result<(), CanvasError> {
     let reply = unsafe { imports::stop_sound(Json(StopSoundInput { id })) }
+        .map_err(|error| CanvasError::new("host", error.to_string()))?;
+    check(reply.0)
+}
+
+/// Reads at most 64 KiB of a file a `file` event delivered, starting at `offset` (v2). The result clips at EOF: an
+/// offset at the end returns empty bytes with `eof` true. Unknown, closed, expired and foreign handles are `not_found`.
+pub fn file_read(handle: &str, offset: u64, length: u32) -> Result<FileChunk, CanvasError> {
+    let input = FileReadInput {
+        handle: handle.to_string(),
+        offset,
+        length,
+    };
+    let reply = unsafe { imports::file_read(Json(input)) }
+        .map_err(|error| CanvasError::new("host", error.to_string()))?
+        .0;
+    if let Some(error) = reply.error {
+        return Err(error);
+    }
+    let encoded = reply.bytes.ok_or_else(|| {
+        CanvasError::new("invalid", "the host sent neither bytes nor an error")
+    })?;
+    let bytes = STANDARD.decode(encoded).map_err(|error| {
+        CanvasError::new("invalid", format!("the host's bytes were not base64: {error}"))
+    })?;
+    Ok(FileChunk {
+        bytes,
+        eof: reply.eof,
+    })
+}
+
+/// Releases a client-local file handle early (v2). Closing an unknown or already-closed handle is harmless.
+pub fn file_close(handle: &str) -> Result<(), CanvasError> {
+    let input = FileCloseInput {
+        handle: handle.to_string(),
+    };
+    let reply = unsafe { imports::file_close(Json(input)) }
         .map_err(|error| CanvasError::new("host", error.to_string()))?;
     check(reply.0)
 }

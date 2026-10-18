@@ -1,0 +1,15 @@
+{
+  "name": "xtp-node-toolkit-build",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Build-time dependencies for bundling the vendored xtp bindgen backends into Node-only bundles.",
+  "type": "module",
+  "scripts": {
+    "build": "node build-bundles.mjs"
+  },
+  "dependencies": {
+    "ejs": "3.1.10",
+    "esbuild": "0.25.0",
+    "js-yaml": "4.1.0"
+  }
+}

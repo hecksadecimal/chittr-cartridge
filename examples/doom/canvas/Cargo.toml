@@ -1,0 +1,33 @@
+[package]
+name = "doom-canvas"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-2.0-only"
+
+[lib]
+name = "plugin"
+crate-type = ["cdylib"]
+
+[features]
+# Opt-in: compiles the vendored C engine. The WAD is supplied at runtime by the
+# viewer, so a wasm engine build needs the WASI SDK but no local game data.
+engine = []
+
+[build-dependencies]
+cc = "1"
+
+[dependencies]
+extism-pdk = "1.1.0"
+chrono = { version = "0.4", default-features = false, features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+base64-serde = "0.7"
+base64 = "0.21"
+chittr-cartridge = { package = "chittr-cartridge-sdk", path = "../../../sdk/chittr-cartridge", default-features = false, features = ["canvas"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+
+[workspace]

@@ -1,10 +1,15 @@
 {
   "v": 1,
-  "name": "Pizza poll",
-  "version": "0.1.0",
+  "name": "Poll",
+  "version": "1.0.0",
   "fonts": { "Mono": "assets/geist-mono.woff2" },
   "controls": {
-    "vote": { "value": { "enum": ["pineapple", "anchovies", "extra-cheese"] } },
+    "configure": {
+      "fields": {
+        "question": { "type": "string", "maxLength": 200 },
+        "options": { "type": "string", "maxLength": 1000 }
+      }
+    },
     "close": { "value": { "enum": ["close"] } }
   }
 }

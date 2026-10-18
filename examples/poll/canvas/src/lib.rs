@@ -1,385 +1,379 @@
-//! The poll Cartridge's Canvas Guest: a bar chart of the poll's results. The results come from the render's
-//! `canvas` state (`{ bars: [{ label, votes }] }`), delivered on start and again on every change as an
-//! `event` of type `state`. The bars grow over 600 ms, then the guest stops asking for frames.
-//!
-//! A pointer release over a bar sends its index to the Server Guest (`send`). The reply, that
-//! option's tally and share, is written under the chart; an error is written there too.
-//!
-//! The chart shows the poll's pizza image (`load_image`) and sets its labels in the manifest's Mono font.
-//! When a vote raises the total, the guest plays a short blip (`load_sound`, `play_sound`). The sound is silent
-//! until the viewer turns the speaker on, and the canvas is `fullscreen`, so the host draws the expand button.
-//!
-//! The exports, host calls and events are the bindings `xtp plugin init` generates from
-//! `docs/cartridges/v1/canvas.xtp.yaml` (see the README). Drawing goes through `chittr-cartridge`'s command-buffer
-//! encoder (`Canvas2D`), the one part a scaffold can't provide.
+//! Canvas Guest for the poll's transparent, clickable answer buttons. The current question, choices and tallies come
+//! from the Server Guest's `render` state. A click sends its option id to `on_canvas_message`, where the server
+//! validates the answer and records the vote.
 
 mod pdk;
 
 use std::cell::RefCell;
 
-use chittr_cartridge::canvas::{Canvas2D, TextAlign, TextBaseline};
+use chittr_cartridge::canvas::{
+    request_frame, send, set_fps, Canvas2D, CanvasError as SdkCanvasError, TextAlign, TextBaseline,
+};
 use extism_pdk::Error;
 use pdk::types::*;
 use serde::Deserialize;
-use serde::Serialize;
 use serde_json::{json, Map, Value};
 
-const BACKGROUND: u32 = 0x1018_20ff;
-const BAR: u32 = 0xf59e_0bff;
-const INK: u32 = 0xe5e7_ebff;
-const GROW_MS: f64 = 600.0;
-const BARS_MAX: usize = 16;
+const TEXT: u32 = 0xe5e7_ebff;
+const MUTED: u32 = 0x9ca3_afff;
+const OUTLINE: u32 = 0x7b8794ff;
+const SELECTED: u32 = 0xc5a16aff;
+const BAR_COLOR: u32 = 0x7b8794ff;
+const WINNER_COLOR: u32 = 0xf0bd55ff;
+const BAR_ANIMATION_MS: f64 = 450.0;
+const BUTTON_HEIGHT_CSS: f32 = 56.0;
+const BUTTON_GAP_CSS: f32 = 8.0;
+const BUTTON_MARGIN_X_CSS: f32 = 12.0;
+const BUTTON_MARGIN_Y_CSS: f32 = 16.0;
+const LABEL_FONT_CSS: f32 = 28.0;
+const TALLY_FONT_CSS: f32 = 16.0;
+const MAX_LABEL_CHARS: usize = 14;
 
-#[derive(Debug, Clone, Deserialize)]
-struct Bar {
+#[derive(Debug, Clone, Deserialize, Default)]
+struct PollOption {
+    id: String,
     label: String,
-    votes: u32,
+    votes: i64,
+    percent: i64,
+    voted: bool,
 }
 
-#[derive(Deserialize)]
-struct Results {
-    bars: Vec<Bar>,
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct PollState {
+    options: Vec<PollOption>,
+    signed_in: bool,
+    closed: bool,
+}
+
+#[derive(Default)]
+struct Button {
+    id: String,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
 }
 
 #[derive(Default)]
 struct State {
-    bars: Vec<Bar>,
     width: f32,
     height: f32,
-    /// The frame time at which the current growth began, once the first frame has run.
-    grow_from: Option<f64>,
-    /// True when something changed and the chart must be drawn again.
-    dirty: bool,
-    /// Each bar's column as it was last drawn, in backing pixels: x, y, width, height. A click inside one sends its index.
-    columns: Vec<(f32, f32, f32, f32)>,
-    /// The last reply or error, written under the chart.
-    caption: Option<String>,
-    /// The sequence number of the next message.
+    dpr: f32,
+    options: Vec<PollOption>,
+    bar_from: Vec<f32>,
+    animation_started: Option<f64>,
+    animating: bool,
+    signed_in: bool,
+    closed: bool,
+    buttons: Vec<Button>,
     seq: u32,
-    /// The pizza image's handle from `load_image`, and once it has decoded, its pixel size.
-    image_handle: Option<u32>,
-    image: Option<(u32, u32, u32)>,
-    /// The blip's handle from `load_sound`, and whether it has decoded.
-    sound_handle: Option<u32>,
-    sound_ready: bool,
-    /// The total votes the chart last knew about: a rise in it is a vote, and plays the blip.
-    total_votes: Option<u64>,
+    dirty: bool,
 }
 
 thread_local! {
     static STATE: RefCell<State> = RefCell::new(State::default());
 }
 
-/// A failed host call or draw: the code and message the guest reports, as a `HookError`-shaped pair.
-#[derive(Debug)]
-struct Failed {
-    code: String,
-    message: String,
-}
-
-impl Failed {
-    fn new(code: &str, message: impl Into<String>) -> Self {
-        Self { code: code.to_string(), message: message.into() }
-    }
-}
-
-impl From<chittr_cartridge::canvas::CanvasError> for Failed {
-    fn from(error: chittr_cartridge::canvas::CanvasError) -> Self {
-        Self::new(&error.code, error.message)
-    }
-}
-
-/// The return of an export: `{}` on success, or the failure as its `error` field.
-fn reply(result: Result<(), Failed>) -> CanvasReply {
+fn reply(error: Option<CanvasError>) -> CanvasReply {
     CanvasReply {
-        error: result.err().map(|error| HookError { code: error.code, message: error.message }),
+        error: error.map(|error| HookError {
+            code: serde_json::to_value(error.code)
+                .ok()
+                .and_then(|value| value.as_str().map(str::to_string))
+                .unwrap_or_else(|| "host".to_string()),
+            message: error.message,
+        }),
     }
 }
 
-/// The code of a generated error enum, as its wire string.
-fn code_of<T: Serialize>(code: &T) -> String {
-    serde_json::to_value(code)
-        .ok()
-        .and_then(|value| value.as_str().map(str::to_string))
-        .unwrap_or_else(|| "host".to_string())
-}
-
-/// A host function's reply, as success or the host's error.
-fn checked(error: Option<CanvasError>) -> Result<(), Failed> {
-    match error {
-        Some(error) => Err(Failed::new(&code_of(&error.code), error.message)),
-        None => Ok(()),
+fn guest_error(error: SdkCanvasError) -> CanvasError {
+    CanvasError {
+        code: serde_json::from_value(json!(error.code)).unwrap_or(CanvasErrorCode::Host),
+        message: error.message,
     }
 }
 
-fn host_failed(error: Error) -> Failed {
-    Failed::new("host", error.to_string())
-}
-
-/// Loads an asset and returns its handle at once; the host says when it has decoded.
-fn load(path: &str, sound: bool) -> Option<u32> {
-    let input = CanvasLoadInput { path: path.to_string() };
-    let output = if sound { pdk::load_sound(input) } else { pdk::load_image(input) };
-    let output = output.ok()?;
-    if output.error.is_some() {
-        return None;
-    }
-    output.handle.map(|handle| handle as u32)
-}
-
-fn bars_from(state: Option<&Map<String, Value>>) -> Vec<Bar> {
+fn read_state(state: Option<&Map<String, Value>>) -> PollState {
     state
-        .and_then(|state| serde_json::from_value::<Results>(Value::Object(state.clone())).ok())
-        .map(|results| results.bars.into_iter().take(BARS_MAX).collect())
+        .and_then(|state| serde_json::from_value(Value::Object(state.clone())).ok())
         .unwrap_or_default()
 }
 
-fn total_votes(bars: &[Bar]) -> u64 {
-    bars.iter().map(|bar| u64::from(bar.votes)).sum()
-}
-
-fn reset_growth(state: &mut State, bars: Vec<Bar>) {
-    state.bars = bars;
-    state.grow_from = None;
+fn apply_state(state: &mut State, input: &PollState, animate: bool) {
+    let mut changed = false;
+    state.bar_from = input
+        .options
+        .iter()
+        .map(
+            |option| match state.options.iter().find(|old| old.id == option.id) {
+                Some(old) => {
+                    changed |= old.percent != option.percent;
+                    old.percent as f32
+                }
+                None => option.percent as f32,
+            },
+        )
+        .collect();
+    state.options = input.options.clone();
+    state.signed_in = input.signed_in;
+    state.closed = input.closed;
+    state.animation_started = None;
+    state.animating = animate && changed;
     state.dirty = true;
 }
 
 pub(crate) fn start(input: CanvasStartInput) -> Result<CanvasReply, Error> {
-    // The image and the blip are the Cartridge's assets. The host decodes them and says so with `image_loaded` and
-    // `sound_loaded`; until then the chart draws without them.
-    let image_handle = load("pizza.webp", false);
-    let sound_handle = load("blip.wav", true);
-    STATE.with(|s| {
-        let mut s = s.borrow_mut();
-        s.width = input.width as f32;
-        s.height = input.height as f32;
-        let bars = bars_from(input.state.as_ref());
-        s.total_votes = Some(total_votes(&bars));
-        reset_growth(&mut s, bars);
-        s.image_handle = image_handle;
-        s.sound_handle = sound_handle;
+    STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        state.width = input.width as f32;
+        state.height = input.height as f32;
+        state.dpr = input.dpr as f32;
+        apply_state(&mut state, &read_state(input.state.as_ref()), false);
     });
-    Ok(reply(set_fps(30).and_then(|()| request_frame())))
+    let result = set_fps(30)
+        .map_err(guest_error)
+        .and_then(|()| STATE.with(|state| draw(&mut state.borrow_mut(), None)));
+    Ok(reply(result.err()))
 }
 
 pub(crate) fn frame(input: CanvasFrameInput) -> Result<CanvasReply, Error> {
-    let result = STATE.with(|s| draw(&mut s.borrow_mut(), input.t));
-    Ok(reply(result))
+    Ok(reply(draw_current(Some(input.t)).err()))
 }
 
 pub(crate) fn event(input: CanvasEventInput) -> Result<CanvasReply, Error> {
     let result = match input.r#type {
         CanvasEventType::State => {
-            let bars = bars_from(input.state.as_ref());
-            let total = total_votes(&bars);
-            // A rise in the total is a vote: play the blip, if the sound has decoded.
-            let blip = STATE.with(|s| {
-                let mut s = s.borrow_mut();
-                let rose = s.total_votes.is_some_and(|before| total > before);
-                s.total_votes = Some(total);
-                reset_growth(&mut s, bars);
-                if rose && s.sound_ready { s.sound_handle } else { None }
+            STATE.with(|state| {
+                apply_state(
+                    &mut state.borrow_mut(),
+                    &read_state(input.state.as_ref()),
+                    true,
+                )
             });
-            if let Some(handle) = blip {
-                // Dropped while the speaker is off, so this is silent until the viewer turns it on.
-                let _ = pdk::play_sound(CanvasPlaySoundInput {
-                    handle: handle as i32,
-                    r#loop: Some(false),
-                    volume: Some(0.6),
-                });
-            }
-            request_frame()
+            draw_current(None)
         }
-        CanvasEventType::Image_loaded => {
-            let handle = input.handle.unwrap_or(0) as u32;
-            let width = input.width.unwrap_or(0.0) as u32;
-            let height = input.height.unwrap_or(0.0) as u32;
-            STATE.with(|s| {
-                let mut s = s.borrow_mut();
-                if s.image_handle == Some(handle) {
-                    s.image = Some((handle, width, height));
-                    s.dirty = true;
-                }
-            });
-            request_frame()
-        }
-        CanvasEventType::Sound_loaded => {
-            let handle = input.handle.unwrap_or(0) as u32;
-            STATE.with(|s| {
-                let mut s = s.borrow_mut();
-                if s.sound_handle == Some(handle) {
-                    s.sound_ready = true;
-                }
-            });
-            Ok(())
-        }
-        // A failed load names its handle. The chart goes on without that asset.
-        CanvasEventType::Error if input.handle.is_some() => Ok(()),
         CanvasEventType::Resize => {
-            let width = input.width.unwrap_or(0.0) as f32;
-            let height = input.height.unwrap_or(0.0) as f32;
-            STATE.with(|s| {
-                let mut s = s.borrow_mut();
-                s.width = width;
-                s.height = height;
-                s.dirty = true;
+            STATE.with(|state| {
+                let mut state = state.borrow_mut();
+                state.width = input.width.unwrap_or(state.width as f64) as f32;
+                state.height = input.height.unwrap_or(state.height as f64) as f32;
+                state.animating = false;
+                state.animation_started = None;
+                state.bar_from = state
+                    .options
+                    .iter()
+                    .map(|option| option.percent as f32)
+                    .collect();
+                state.dirty = true;
             });
-            request_frame()
+            draw_current(None)
         }
-        CanvasEventType::Visibility => {
-            STATE.with(|s| s.borrow_mut().dirty = true);
-            request_frame()
-        }
+        CanvasEventType::Visibility => draw_current(None),
         CanvasEventType::Pointer => pointer(&input),
-        CanvasEventType::Reply => {
-            let caption = reply_caption(input.reply.as_ref());
-            set_caption(caption);
-            request_frame()
-        }
-        CanvasEventType::Error => {
-            let code = input.code.as_deref().unwrap_or("error");
-            set_caption(format!("That didn't work ({code})"));
-            request_frame()
-        }
-        // Unknown events are ignored, as the ABI asks.
+        CanvasEventType::Reply | CanvasEventType::Error => Ok(()),
         _ => Ok(()),
     };
-    Ok(reply(result))
+    Ok(reply(result.err()))
 }
 
-fn set_fps(fps: i32) -> Result<(), Failed> {
-    checked(pdk::set_fps(SetFpsInput { fps }).map_err(host_failed)?.error)
-}
-
-fn request_frame() -> Result<(), Failed> {
-    checked(pdk::request_frame().map_err(host_failed)?.error)
-}
-
-fn set_caption(caption: String) {
-    STATE.with(|s| {
-        let mut s = s.borrow_mut();
-        s.caption = Some(caption);
-        s.dirty = true;
+fn draw_current(time: Option<f64>) -> Result<(), CanvasError> {
+    let (result, animating) = STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        let result = draw(&mut state, time);
+        (result, state.animating)
     });
+    result?;
+    continue_animation(animating)
 }
 
-/// The caption for a bar's reply: its label, tally and share.
-fn reply_caption(reply: Option<&Map<String, Value>>) -> String {
-    let field = |name: &str| reply.and_then(|r| r.get(name));
-    let label = field("label").and_then(Value::as_str).unwrap_or("That option");
-    let votes = field("votes").and_then(Value::as_i64).unwrap_or(0);
-    let percent = field("percent").and_then(Value::as_i64).unwrap_or(0);
-    format!("{label}: {votes} votes ({percent}%)")
+fn continue_animation(animating: bool) -> Result<(), CanvasError> {
+    if !animating || request_frame().is_ok() {
+        return Ok(());
+    }
+    // If the host declines another frame, settle at the latest percentages instead of trapping.
+    STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        state.animating = false;
+        state.animation_started = None;
+        state.bar_from = state
+            .options
+            .iter()
+            .map(|option| option.percent as f32)
+            .collect();
+        state.dirty = true;
+        draw(&mut state, None)
+    })
 }
 
-/// A pointer release over a bar sends that bar's index. The event's coordinates are CSS pixels of the canvas box, so
-/// they are scaled to the backing store, where the columns were drawn.
-fn pointer(input: &CanvasEventInput) -> Result<(), Failed> {
+fn pointer(input: &CanvasEventInput) -> Result<(), CanvasError> {
     if input.action.as_deref() != Some("up") {
         return Ok(());
     }
-    let (css_width, css_height) = (input.width.unwrap_or(0.0) as f32, input.height.unwrap_or(0.0) as f32);
-    let (x, y) = STATE.with(|s| {
-        let s = s.borrow();
-        let scale_x = if css_width > 0.0 { s.width / css_width } else { 1.0 };
-        let scale_y = if css_height > 0.0 { s.height / css_height } else { 1.0 };
-        (input.x.unwrap_or(0.0) as f32 * scale_x, input.y.unwrap_or(0.0) as f32 * scale_y)
+    let hit = STATE.with(|state| {
+        let state = state.borrow();
+        if !state.signed_in || state.closed {
+            return None;
+        }
+        let css_width = input.width.unwrap_or(state.width as f64) as f32;
+        let css_height = input.height.unwrap_or(state.height as f64) as f32;
+        let scale_x = if css_width > 0.0 {
+            state.width / css_width
+        } else {
+            1.0
+        };
+        let scale_y = if css_height > 0.0 {
+            state.height / css_height
+        } else {
+            1.0
+        };
+        let x = input.x.unwrap_or(0.0) as f32 * scale_x;
+        let y = input.y.unwrap_or(0.0) as f32 * scale_y;
+        state
+            .buttons
+            .iter()
+            .find(|button| {
+                x >= button.x
+                    && x < button.x + button.width
+                    && y >= button.y
+                    && y < button.y + button.height
+            })
+            .map(|button| button.id.clone())
     });
-    let hit = STATE.with(|s| {
-        s.borrow().columns.iter().position(|&(cx, cy, cw, ch)| x >= cx && x < cx + cw && y >= cy && y < cy + ch)
-    });
-    let Some(bar) = hit else {
+    let Some(option_id) = hit else {
         return Ok(());
     };
-    let seq = STATE.with(|s| {
-        let mut s = s.borrow_mut();
-        s.seq += 1;
-        s.seq
+    let (seq, message) = STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        state.seq = state.seq.wrapping_add(1).max(1);
+        let mut message = Map::new();
+        message.insert("optionId".to_string(), json!(option_id));
+        (state.seq, message)
     });
-    let message = match json!({ "bar": bar }) {
-        Value::Object(map) => map,
-        _ => Map::new(),
-    };
-    checked(pdk::send(CanvasSendInput { message, seq: Some(seq as i32) }).map_err(host_failed)?.error)
+    send(Value::Object(message), Some(seq)).map_err(guest_error)
 }
 
-/// Draws one frame if the chart changed or is still growing. Asks for another frame while it grows.
-fn draw(state: &mut State, t: f64) -> Result<(), Failed> {
-    let from = *state.grow_from.get_or_insert(t);
-    let progress = ((t - from) / GROW_MS).clamp(0.0, 1.0) as f32;
-    if !state.dirty && progress >= 1.0 {
+fn draw(state: &mut State, time: Option<f64>) -> Result<(), CanvasError> {
+    if !state.dirty && !state.animating {
         return Ok(());
     }
     state.dirty = false;
-
-    let (w, h) = (state.width, state.height);
-    let mut c = Canvas2D::new();
-    c.fill_color(BACKGROUND).fill_rect(0.0, 0.0, w, h);
-    if state.bars.is_empty() {
-        state.columns.clear();
-        c.fill_color(INK)
-            .font("Mono", 18.0, 400.0)
-            .text_align(TextAlign::Center)
-            .fill_text("No results yet", w / 2.0, h / 2.0);
+    let width = state.width.max(1.0);
+    let height = state.height.max(1.0);
+    let progress = if state.animating {
+        if let Some(now) = time {
+            let started = *state.animation_started.get_or_insert(now);
+            let linear = ((now - started) / BAR_ANIMATION_MS).clamp(0.0, 1.0) as f32;
+            1.0 - (1.0 - linear).powi(3)
+        } else {
+            0.0
+        }
     } else {
-        state.columns = draw_bars(&mut c, &state.bars, w, h, progress);
+        1.0
+    };
+    if progress >= 1.0 {
+        state.animating = false;
     }
-    if let Some((handle, image_w, image_h)) = state.image {
-        // The pizza, in the top-left corner, over the caption's band.
-        c.draw_image(
-            handle,
-            [0.0, 0.0, image_w as f32, image_h as f32],
-            [6.0, 6.0, 24.0, 24.0],
-        );
-    }
-    if let Some(caption) = &state.caption {
-        c.fill_color(INK)
-            .font("Mono", 16.0, 400.0)
+
+    let mut canvas = Canvas2D::new();
+    // Clear to transparent; neither the canvas nor its answer buttons paint an opaque backdrop.
+    canvas.clear_rect(0.0, 0.0, width, height);
+    state.buttons.clear();
+
+    if state.options.is_empty() {
+        canvas
+            .fill_color(MUTED)
+            .font("Mono", LABEL_FONT_CSS * state.dpr.max(1.0), 400.0)
             .text_align(TextAlign::Center)
-            .text_baseline(TextBaseline::Top)
-            .fill_text(caption, w / 2.0, 4.0);
+            .text_baseline(TextBaseline::Middle)
+            .fill_text("No answers are configured", width / 2.0, height / 2.0);
+    } else {
+        let scale = state.dpr.max(1.0);
+        let margin_x = BUTTON_MARGIN_X_CSS * scale;
+        let margin_y = BUTTON_MARGIN_Y_CSS * scale;
+        let gap = BUTTON_GAP_CSS * scale;
+        let count = state.options.len() as f32;
+        let available = (height - margin_y * 2.0 - gap * (count - 1.0)).max(1.0);
+        let button_height = (BUTTON_HEIGHT_CSS * scale).min(available / count);
+        let pitch = button_height + gap;
+        let top = ((height - (button_height * count + gap * (count - 1.0))) / 2.0).max(0.0);
+        let button_width = (width - margin_x * 2.0).max(1.0);
+        let max_votes = state
+            .options
+            .iter()
+            .map(|option| option.votes)
+            .max()
+            .unwrap_or(0);
+        let bar_height = 6.0 * scale;
+        for (index, option) in state.options.iter().enumerate() {
+            let x = margin_x;
+            let y = top + index as f32 * pitch;
+            let color = if option.voted { SELECTED } else { OUTLINE };
+            canvas
+                .stroke_color(color)
+                .line_width(if option.voted {
+                    2.0 * scale
+                } else {
+                    1.5 * scale
+                })
+                .stroke_rect(x, y, button_width, button_height);
+
+            let from = state
+                .bar_from
+                .get(index)
+                .copied()
+                .unwrap_or(option.percent as f32);
+            let percent = from + (option.percent as f32 - from) * progress;
+            let bar_width = (button_width - 2.0 * scale) * percent.clamp(0.0, 100.0) / 100.0;
+            if bar_width > 0.0 {
+                let bar_color = if max_votes > 0 && option.votes == max_votes {
+                    WINNER_COLOR
+                } else {
+                    BAR_COLOR
+                };
+                canvas.fill_color(bar_color).fill_rect(
+                    x + scale,
+                    y + button_height - bar_height - scale,
+                    bar_width,
+                    bar_height,
+                );
+            }
+
+            let label = truncate(&option.label, MAX_LABEL_CHARS);
+            let text_y = y + (button_height - bar_height) / 2.0;
+            canvas
+                .fill_color(TEXT)
+                .font("Mono", LABEL_FONT_CSS * scale, 500.0)
+                .text_align(TextAlign::Left)
+                .text_baseline(TextBaseline::Middle)
+                .fill_text(&label, x + 14.0 * scale, text_y);
+            let votes = format!("{} · {}%", option.votes, option.percent);
+            canvas
+                .fill_color(MUTED)
+                .font("Mono", TALLY_FONT_CSS * scale, 400.0)
+                .text_align(TextAlign::Right)
+                .text_baseline(TextBaseline::Middle)
+                .fill_text(&votes, x + button_width - 14.0 * scale, text_y);
+            state.buttons.push(Button {
+                id: option.id.clone(),
+                x,
+                y,
+                width: button_width,
+                height: button_height,
+            });
+        }
     }
-    c.submit()?;
-    if progress < 1.0 {
-        request_frame()?;
-    }
-    Ok(())
+    canvas.submit().map_err(|error| CanvasError {
+        code: CanvasErrorCode::Invalid,
+        message: error.to_string(),
+    })
 }
 
-/// Draws the bars and returns each bar's column (the whole height above it counts as the bar, for clicks).
-fn draw_bars(
-    c: &mut Canvas2D,
-    bars: &[Bar],
-    w: f32,
-    h: f32,
-    progress: f32,
-) -> Vec<(f32, f32, f32, f32)> {
-    let margin = 24.0;
-    let label_band = 32.0;
-    let area_h = (h - 2.0 * margin - label_band).max(1.0);
-    let slot = ((w - 2.0 * margin) / bars.len() as f32).max(1.0);
-    let bar_w = slot * 0.6;
-    let top = bars.iter().map(|bar| bar.votes).max().unwrap_or(1).max(1) as f32;
-
-    let label_size = (slot / 7.5).clamp(12.0, 18.0);
-    c.font("Mono", label_size, 400.0)
-        .text_align(TextAlign::Center)
-        .text_baseline(TextBaseline::Alphabetic);
-    let value_size = (label_size + 2.0).min(20.0);
-    let mut columns = Vec::with_capacity(bars.len());
-    for (i, bar) in bars.iter().enumerate() {
-        let column_x = margin + i as f32 * slot;
-        columns.push((column_x, 0.0, slot, h));
-        let x = column_x + (slot - bar_w) / 2.0;
-        let full = bar.votes as f32 / top * area_h;
-        let height = full * progress;
-        let y = h - margin - label_band - height;
-        c.fill_color(BAR).fill_rect(x, y, bar_w, height);
-        c.fill_color(INK)
-            .font("Mono", value_size, 400.0)
-            .fill_text(&bar.votes.to_string(), x + bar_w / 2.0, y - 4.0)
-            .font("Mono", label_size, 400.0)
-            .fill_text(&bar.label, x + bar_w / 2.0, h - margin);
+fn truncate(label: &str, max_chars: usize) -> String {
+    if label.chars().count() <= max_chars {
+        return label.to_string();
     }
-    columns
+    let mut out: String = label.chars().take(max_chars.saturating_sub(1)).collect();
+    out.push('…');
+    out
 }

@@ -89,6 +89,12 @@ fn server_hook_envelopes_round_trip() {
     round_trip::<ReactionGateInput>("server-examples.json", "ReactionGateInput");
     round_trip::<RechittGateInput>("server-examples.json", "RechittGateInput");
     round_trip::<GateResult>("server-examples.json", "GateOutput");
+    round_trip::<FileRef>("server-examples.json", "FileRef");
+    round_trip::<FileInput>("server-examples.json", "FileInput");
+    round_trip::<FileOutput>("server-examples.json", "FileOutput");
+    round_trip::<ConfigAccess>("server-examples.json", "ConfigAccess");
+    round_trip::<RenderConfigInput>("server-examples.json", "RenderConfigInput");
+    round_trip::<RenderConfigOutput>("server-examples.json", "RenderConfigOutput");
 }
 
 #[test]
@@ -99,4 +105,6 @@ fn canvas_envelopes_round_trip() {
     round_trip::<canvas::StartInput>("canvas-examples.json", "CanvasStartInput");
     round_trip::<canvas::FrameInput>("canvas-examples.json", "CanvasFrameInput");
     round_trip::<canvas::EventInput>("canvas-examples.json", "CanvasEventInput");
+    round_trip::<canvas::CanvasLimits>("canvas-examples.json", "CanvasLimits");
+    round_trip::<canvas::FileRef>("canvas-examples.json", "FileRef");
 }

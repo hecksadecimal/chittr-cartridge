@@ -12,6 +12,7 @@ use chittr_cartridge::canvas::{
 };
 
 const GOLDEN: &[u8] = include_bytes!("fixtures/canvas/command-buffer-v1.bin");
+const GOLDEN_V2: &[u8] = include_bytes!("fixtures/canvas/command-buffer-v2.bin");
 
 fn sequence() -> CommandBuffer {
     let mut c = CommandBuffer::new();
@@ -75,6 +76,36 @@ fn encoder_matches_the_golden_bytes() {
     assert_eq!(sequence().bytes(), GOLDEN);
 }
 
+/// The v2 ops (0x52, 0x53), in table order. The v1 sequence above stays the 0x01–0x51 fixture.
+fn v2_sequence() -> CommandBuffer {
+    let mut c = CommandBuffer::new();
+    c.blit_rgba_scaled(
+        [10.0, 20.0, 320.0, 200.0],
+        2,
+        1,
+        false,
+        &[1, 2, 3, 4, 5, 6, 7, 8],
+    )
+    .blit_indexed_scaled(
+        [0.0, 0.0, 64.0, 32.0],
+        2,
+        1,
+        true,
+        &[
+            rgba(1, 2, 3, 4),
+            rgba(5, 6, 7, 8),
+            rgba(9, 10, 11, 12),
+        ],
+        &[0, 2],
+    );
+    c
+}
+
+#[test]
+fn encoder_matches_the_v2_golden_bytes() {
+    assert_eq!(v2_sequence().bytes(), GOLDEN_V2);
+}
+
 #[test]
 #[ignore = "writes the golden fixture; run on purpose after an ABI change"]
 fn write_golden() {
@@ -83,4 +114,14 @@ fn write_golden() {
         "/tests/fixtures/canvas/command-buffer-v1.bin"
     );
     std::fs::write(path, sequence().bytes()).expect("write the golden fixture");
+}
+
+#[test]
+#[ignore = "writes the v2 golden fixture; run on purpose after an ABI change"]
+fn write_golden_v2() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/canvas/command-buffer-v2.bin"
+    );
+    std::fs::write(path, v2_sequence().bytes()).expect("write the v2 golden fixture");
 }

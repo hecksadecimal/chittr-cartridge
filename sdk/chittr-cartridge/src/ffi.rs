@@ -47,6 +47,9 @@ host_functions! {
     push_render,
     // Assets (host.rs)
     asset,
+    // Files (host.rs, ABI v2)
+    file_read,
+    file_close,
     // Poster Actions (poster.rs)
     post_reply,
     post_chitt,

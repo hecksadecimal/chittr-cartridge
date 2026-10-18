@@ -1,0 +1,8 @@
+{
+  "v": 2,
+  "name": "DOOM — first episode",
+  "version": "0.2.2",
+  "capabilities": {
+    "canvas": { "require": ["files.client", "framebuffer.indexed8"] }
+  }
+}

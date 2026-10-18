@@ -1,5 +1,6 @@
-//! The command buffer encoder (ABI `v: 1`, docs/cartridges/v1/abi.md; see docs/cartridges/v1/design.md). Pure: no
-//! host calls, so it is tested natively against the golden bytes in tests/fixtures/canvas/command-buffer-v1.bin.
+//! The command buffer encoder (ABI `v: 1` and `v: 2`, docs/cartridges/v1/abi.md and docs/cartridges/v2/abi.md; see the
+//! design docs). Pure: no host calls, so it is tested natively against the golden bytes in
+//! tests/fixtures/canvas/command-buffer-v1.bin (0x01–0x51) and command-buffer-v2.bin (0x52–0x53).
 //!
 //! Layout: each op is a `u8` opcode then its arguments, little-endian. `f32` for numbers, `u32` for RGBA
 //! colours (0xRRGGBBAA) and ids, and `u32` byte length then UTF-8 for strings. The opcode values are the
@@ -7,6 +8,12 @@
 
 /// Largest buffer one `submit` may carry, in bytes. The host refuses more (abi.md, limits).
 pub const SUBMIT_BYTES_MAX: usize = 4 * 1024 * 1024;
+
+/// Largest source `w × h` a scaled blit may present (v2, abi.md limits).
+pub const BLIT_PIXELS_MAX: u32 = 1_048_576;
+
+/// Largest palette an indexed blit may carry (v2, abi.md limits).
+pub const PALETTE_ENTRIES_MAX: usize = 256;
 
 /// Composite operations for `set_composite`. The discriminant is the wire value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -113,6 +120,8 @@ pub mod op {
     pub const STROKE_TEXT: u8 = 0x44;
     pub const DRAW_IMAGE: u8 = 0x50;
     pub const BLIT_RGBA: u8 = 0x51;
+    pub const BLIT_RGBA_SCALED: u8 = 0x52;
+    pub const BLIT_INDEXED_SCALED: u8 = 0x53;
 }
 
 /// A colour as the wire carries it: 0xRRGGBBAA.
@@ -425,6 +434,54 @@ impl CommandBuffer {
             .u32(h)
             .u32(pixels.len() as u32);
         self.bytes.extend_from_slice(pixels);
+        self
+    }
+
+    /// Presents raw RGBA pixels scaled into the destination rectangle `dst` (`[dx, dy, dw, dh]`, backing-store
+    /// pixels). Unlike `blit_rgba`, this honours a destination rectangle, so the guest sends its own pixels and the
+    /// host scales them. `smoothing` picks linear over nearest-neighbour; a pixel-art guest passes `false`. `pixels`
+    /// must be `w * h * 4` bytes, and `w * h` must not exceed `BLIT_PIXELS_MAX` (v2).
+    pub fn blit_rgba_scaled(
+        &mut self,
+        dst: [f32; 4],
+        w: u32,
+        h: u32,
+        smoothing: bool,
+        pixels: &[u8],
+    ) -> &mut Self {
+        self.op(op::BLIT_RGBA_SCALED)
+            .f32s(&dst)
+            .u32(w)
+            .u32(h)
+            .u8(smoothing as u8)
+            .u32(pixels.len() as u32);
+        self.bytes.extend_from_slice(pixels);
+        self
+    }
+
+    /// Presents indexed8 pixels with a palette, scaled into the destination rectangle `dst` (`[dx, dy, dw, dh]`,
+    /// backing-store pixels). `indices` must be `w * h` bytes; each selects a palette entry by position, and an index
+    /// at or past `palette.len()` draws transparent. `palette` is up to `PALETTE_ENTRIES_MAX` entries of `0xRRGGBBAA`;
+    /// the host pads the rest to 256 with transparent. `w * h` must not exceed `BLIT_PIXELS_MAX` (v2).
+    pub fn blit_indexed_scaled(
+        &mut self,
+        dst: [f32; 4],
+        w: u32,
+        h: u32,
+        smoothing: bool,
+        palette: &[u32],
+        indices: &[u8],
+    ) -> &mut Self {
+        self.op(op::BLIT_INDEXED_SCALED)
+            .f32s(&dst)
+            .u32(w)
+            .u32(h)
+            .u8(smoothing as u8)
+            .u32(palette.len() as u32);
+        for entry in palette {
+            self.u32(*entry);
+        }
+        self.bytes.extend_from_slice(indices);
         self
     }
 }

@@ -1,0 +1,1 @@
+{"ok":false,"error":"templates/card.liquid: uses the non-public Control \"reset_scores\" outside the configuration template; a Control with audience \"owner\" belongs in config.liquid"}

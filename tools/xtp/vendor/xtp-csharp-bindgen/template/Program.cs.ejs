@@ -1,0 +1,35 @@
+namespace <%- project.name %>;
+using System;
+using Extism;
+
+public class Program
+{
+    public static void Main()
+    {
+        // Note: a `Main` method is required for the app to compile
+    }
+
+	<% schema.exports.forEach(ex => { %>
+		<% if (hasComment(ex)) { %>
+			/// <summary> 
+			/// <%- formatCommentBlock(ex.description, '///') %>
+			/// </summary>
+		<% } %>
+		<% if (hasComment(ex.input)) { -%>
+			/// <param name="input"><%= formatCommentLine(ex.input.description) %></param>
+		<% } -%>
+		<% if (hasComment(ex.output)) { -%>
+			/// <returns><%= formatCommentLine(ex.output.description) %></returns>
+		<% } %>
+		public static <%- ex.output?.xtpType ? toCSharpTypeX(ex.output.xtpType) : "void" %> <%- csharpName(ex.name) %>(<%- ex.input?.xtpType ? `${toCSharpTypeX(ex.input.xtpType)} input` : "" %>)
+		{
+			<% if (featureFlags['stub-with-code-samples'] && codeSamples(ex, 'csharp').length > 0) { -%>
+				<%- codeSamples(ex, 'csharp')[0].source %>
+			<% } else { -%>
+				// TODO: fill out your implementation here
+				throw new NotImplementedException();
+			<% } -%>
+		}
+	<% }) %>
+	
+}

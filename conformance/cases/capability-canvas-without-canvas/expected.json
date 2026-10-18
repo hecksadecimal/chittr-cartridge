@@ -1,0 +1,1 @@
+{"ok":false,"error":"manifest.json: declares \"capabilities.canvas\" but the Cartridge has no canvas.wasm"}

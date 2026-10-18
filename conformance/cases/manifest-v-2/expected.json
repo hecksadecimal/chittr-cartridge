@@ -1,4 +1,3 @@
 {
-  "ok": false,
-  "error": "manifest.json: \"v\" must be 1"
+  "ok": true
 }

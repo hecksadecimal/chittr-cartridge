@@ -1,0 +1,1 @@
+{"ok":false,"error":"manifest.json: \"capabilities.server.require\" has an unknown capability \"files.nope\"; allowed ids are files.server, clock.monotonic"}

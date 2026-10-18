@@ -47,8 +47,9 @@ chmod 755 "$DIR/$EXE"
 cp "$ROOT/README.md" "$ROOT/LICENSE-MIT" "$ROOT/LICENSE-APACHE" "$DIR/"
 mkdir -p "$DIR/docs/cartridges"
 cp -R "$ROOT/docs/cartridges/v1" "$DIR/docs/cartridges/"
-# The examples' sources: no target/ directories, and no wasm, which the build script writes into each cartridge/.
-(cd "$ROOT" && tar --exclude=target --exclude='*.wasm' --exclude=.DS_Store -cf - examples) |
+# Sources only: never ship local game data, data-bearing built cartridges, or downloaded C toolchains.
+# Gitignore alone is not sufficient because this script archives the working directory, not git's index.
+(cd "$ROOT" && tar --exclude=target --exclude='.tools' --exclude='*.wasm' --exclude='*.cartridge' --exclude='*.[wW][aA][dD]' --exclude=.DS_Store -cf - examples) |
   (cd "$DIR" && tar -xf -)
 # The SDK the examples depend on by path. Its manifests inherit their package fields from the workspace, so the zip
 # carries the repository's workspace manifest too, without the CLI member the zip does not hold.

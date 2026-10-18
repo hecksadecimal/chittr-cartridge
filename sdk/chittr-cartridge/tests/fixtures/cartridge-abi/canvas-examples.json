@@ -62,6 +62,27 @@
       "prefersReducedMotion": true,
       "state": null,
       "fullscreen": true
+    },
+    {
+      "width": 640,
+      "height": 360,
+      "dpr": 2,
+      "prefersReducedMotion": false,
+      "state": null,
+      "fullscreen": false,
+      "capabilities": [
+        "files.client",
+        "framebuffer.indexed8"
+      ],
+      "limits": {
+        "maxFileBytes": 16777216,
+        "maxFileReadBytes": 65536,
+        "maxFileHandles": 4,
+        "maxFileBytesPerCanvas": 33554432,
+        "maxPickers": 8,
+        "maxFramebufferPixels": 1048576,
+        "maxPaletteEntries": 256
+      }
     }
   ],
   "CanvasFrameInput": [
@@ -152,6 +173,16 @@
       "handle": 1,
       "code": "not_found",
       "message": "there is no asset at \"pizza.webp\""
+    },
+    {
+      "type": "file",
+      "name": "wad",
+      "file": {
+        "id": "f_1",
+        "filename": "doom1.wad",
+        "mimeType": "application/octet-stream",
+        "size": 14445628
+      }
     }
   ],
   "SetFpsInput": [
@@ -233,6 +264,25 @@
   "CanvasStopSoundInput": [
     {
       "id": 4
+    }
+  ],
+  "CanvasLimits": [
+    {
+      "maxFileBytes": 16777216,
+      "maxFileReadBytes": 65536,
+      "maxFileHandles": 4,
+      "maxFileBytesPerCanvas": 33554432,
+      "maxPickers": 8,
+      "maxFramebufferPixels": 1048576,
+      "maxPaletteEntries": 256
+    }
+  ],
+  "FileRef": [
+    {
+      "id": "f_1",
+      "filename": "doom1.wad",
+      "mimeType": "application/octet-stream",
+      "size": 14445628
     }
   ]
 }

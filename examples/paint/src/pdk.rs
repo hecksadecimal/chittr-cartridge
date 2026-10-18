@@ -1261,7 +1261,7 @@ pub mod types {
         /// The Character's age in sweeps, or null.
         #[serde(rename = "ageSweeps")]
         #[serde(default = "panic_if_key_missing")]
-        pub age_sweeps: Option<i32>,
+        pub age_sweeps: Option<f64>,
 
         /// The avatar's URL, or null.
         #[serde(rename = "avatarUrl")]
@@ -1321,6 +1321,10 @@ pub mod types {
         /// Whether this Character belongs to the poster's user.
         #[serde(rename = "isPosterUser")]
         pub is_poster_user: bool,
+
+        /// Whether this Character is currently suspended.
+        #[serde(rename = "isSuspended")]
+        pub is_suspended: bool,
 
         /// The Character's kull score.
         #[serde(rename = "kullScore")]

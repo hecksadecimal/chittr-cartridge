@@ -347,6 +347,53 @@ fn assets_come_from_the_host_table() {
 }
 
 #[test]
+fn files_read_in_bounded_chunks_and_close() {
+    let host = TestHost::new();
+    host.put_file("f1", b"0123456789");
+
+    let first = chittr_cartridge::host::file_read("f1", 0, 4).unwrap();
+    assert_eq!(first.bytes, b"0123");
+    assert!(!first.eof);
+
+    let tail = chittr_cartridge::host::file_read("f1", 8, 4).unwrap();
+    assert_eq!(tail.bytes, b"89");
+    assert!(tail.eof);
+
+    let empty = chittr_cartridge::host::file_read("f1", 10, 4).unwrap();
+    assert!(empty.bytes.is_empty());
+    assert!(empty.eof);
+
+    assert_eq!(
+        chittr_cartridge::host::file_read("f1", 11, 4)
+            .unwrap_err()
+            .code,
+        "invalid"
+    );
+    assert_eq!(
+        chittr_cartridge::host::file_read("f1", 0, 65537)
+            .unwrap_err()
+            .code,
+        "too_large"
+    );
+    assert_eq!(
+        chittr_cartridge::host::file_read("missing", 0, 4)
+            .unwrap_err()
+            .code,
+        "not_found"
+    );
+
+    chittr_cartridge::host::file_close("f1").unwrap();
+    assert_eq!(
+        chittr_cartridge::host::file_read("f1", 0, 4)
+            .unwrap_err()
+            .code,
+        "not_found"
+    );
+    // Closing an unknown or already-closed handle is harmless.
+    chittr_cartridge::host::file_close("f1").unwrap();
+}
+
+#[test]
 fn logs_are_recorded_and_cut_to_512_bytes() {
     let host = TestHost::new();
     chittr_cartridge::log!(LogLevel::Info, "rendering {}", "chitt-1");

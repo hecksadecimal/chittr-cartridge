@@ -1,0 +1,1 @@
+{"ok":false,"error":"manifest.json: \"capabilities.server\" lists \"files.server\" as both required and optional"}

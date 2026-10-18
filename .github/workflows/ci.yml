@@ -51,7 +51,15 @@ jobs:
       - name: Build every example to wasm
         run: sh scripts/build-examples.sh
       - name: Test the examples' Hooks natively
-        run: cargo test --manifest-path examples/poll/Cargo.toml
+        run: |
+          cargo test --manifest-path examples/poll/Cargo.toml
+          cargo test --manifest-path examples/hurtle/Cargo.toml
+          cargo test --manifest-path examples/breakout/Cargo.toml
+          cargo test --manifest-path examples/breakout/canvas/Cargo.toml
+          cargo test --manifest-path examples/doom/Cargo.toml
+          cargo test --manifest-path examples/doom/canvas/Cargo.toml
+      - name: Check DOOM's C boundary without game data
+        run: ASAN=1 sh examples/doom/engine/tests/native-smoke.sh --structural-only
       - name: Build the CLI
         run: cargo build --release -p chittr-cartridge
       - name: Check every example's Cartridge

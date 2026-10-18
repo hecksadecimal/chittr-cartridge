@@ -25,6 +25,8 @@ pub enum Sdk {
 #[derive(Debug, Clone)]
 pub struct NewProject {
     pub name: String,
+    /// The Cartridge ABI to target: 1 or 2.
+    pub abi: u32,
     pub canvas: bool,
     pub sdk: Sdk,
 }
@@ -32,6 +34,9 @@ pub struct NewProject {
 /// Creates `parent/<name>` from the templates and returns its path. Refuses an existing directory.
 pub fn create(parent: &Path, project: &NewProject) -> Result<PathBuf> {
     validate_name(&project.name)?;
+    if project.abi != 1 && project.abi != 2 {
+        bail!("the ABI version must be 1 or 2 (got {})", project.abi);
+    }
     let root = parent.join(&project.name);
     if root.exists() {
         bail!("{} already exists", root.display());
@@ -47,8 +52,10 @@ pub fn create(parent: &Path, project: &NewProject) -> Result<PathBuf> {
     } else {
         ""
     };
+    let abi = project.abi.to_string();
     let substitutions = [
         ("__NAME__", project.name.as_str()),
+        ("__ABI__", abi.as_str()),
         ("__SDK_DEP__", &format!("{{ package = \"chittr-cartridge-sdk\", {sdk} }}")),
         ("__SDK_CANVAS_DEP__", &format!("{{ package = \"chittr-cartridge-sdk\", {sdk}, default-features = false, features = [\"canvas\"] }}")),
         ("__CANVAS_PLACEMENT__", canvas_placement),
@@ -57,6 +64,10 @@ pub fn create(parent: &Path, project: &NewProject) -> Result<PathBuf> {
 
     for file in all_files(&TEMPLATES) {
         let relative = file.path().to_str().context("template path is UTF-8")?;
+        if relative.starts_with("v2/") {
+            // The v2 bindings are injected after the tree is written.
+            continue;
+        }
         let (group, rest) = relative
             .split_once('/')
             .context("template outside a group")?;
@@ -83,7 +94,21 @@ pub fn create(parent: &Path, project: &NewProject) -> Result<PathBuf> {
             make_executable(&path)?;
         }
     }
+    if project.abi >= 2 {
+        write_binding(&root.join("src/pdk.rs"), "v2/server/pdk.rs")?;
+        if project.canvas {
+            write_binding(&root.join("canvas/src/pdk.rs"), "v2/canvas/pdk.rs")?;
+        }
+    }
     Ok(root)
+}
+
+/// Writes a v2 binding over the tree's v1 one.
+fn write_binding(dest: &Path, source: &str) -> Result<()> {
+    let file = TEMPLATES
+        .get_file(source)
+        .with_context(|| format!("the v2 template {source} is missing"))?;
+    fs::write(dest, file.contents()).with_context(|| format!("{}", dest.display()))
 }
 
 fn sdk_spec(sdk: &Sdk) -> Result<String> {

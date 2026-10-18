@@ -6,7 +6,7 @@ use wasmparser::{ExternalKind, Parser, Payload, TypeRef, Validator};
 
 use crate::error::{fail, CartridgeError, Result};
 
-/// Hook names the Server Guest may export in the validator's order.
+/// Hook names the Server Guest may export in the validator's order (ABI v1).
 pub const HOOK_NAMES: [&str; 10] = [
     "init",
     "migrate",
@@ -19,6 +19,9 @@ pub const HOOK_NAMES: [&str; 10] = [
     "on_timer",
     "on_canvas_message",
 ];
+
+/// Hook names only a v2 Server Guest may export.
+pub const HOOK_NAMES_V2: [&str; 2] = ["on_file", "render_config"];
 
 /// The exports a canvas guest must have, and the one it may have .
 pub const CANVAS_REQUIRED_EXPORTS: [&str; 2] = ["start", "frame"];
@@ -83,9 +86,18 @@ fn read_exports(file: &str, bytes: &[u8]) -> Result<Vec<(String, Kind)>> {
 
 /// Compiles `server.wasm`, checks every export is a known Hook function (or `memory`), and returns the Hooks in export
 /// order. `render` must be among them.
-pub fn check_server(bytes: &[u8]) -> Result<Vec<String>> {
+pub fn check_server(bytes: &[u8], abi: u32) -> Result<Vec<String>> {
     const FILE: &str = "server.wasm";
     compile(FILE, bytes)?;
+    let allowed: Vec<&str> = if abi >= 2 {
+        HOOK_NAMES
+            .iter()
+            .chain(HOOK_NAMES_V2.iter())
+            .copied()
+            .collect()
+    } else {
+        HOOK_NAMES.to_vec()
+    };
     let mut hooks = Vec::new();
     for (name, kind) in &read_exports(FILE, bytes)? {
         if *kind == Kind::Memory && name == "memory" {
@@ -100,12 +112,12 @@ pub fn check_server(bytes: &[u8]) -> Result<Vec<String>> {
                 ),
             );
         }
-        if !HOOK_NAMES.contains(&name.as_str()) {
+        if !allowed.contains(&name.as_str()) {
             return fail(
                 FILE,
                 format!(
                     r#"export "{name}" is not a known Hook; known Hooks are {}"#,
-                    HOOK_NAMES.join(", ")
+                    allowed.join(", ")
                 ),
             );
         }

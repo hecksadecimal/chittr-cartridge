@@ -1,0 +1,17 @@
+app_id = "<%- project.appId %>"
+
+# This is where 'xtp plugin push' expects to find the DLL file after the build script has run.
+bin = "dist/plugin.wasm"
+extension_point_id = "<%- project.extensionPointId %>"
+# This is the 'binding' name used for the plugin.
+name = "<%- project.name %>"
+
+[scripts]
+# xtp plugin build runs this script to generate the DLL file
+build = "dotnet publish -c Release && cp bin/Release/wasi-wasm/AppBundle/<%-project.name%>.wasm dist/plugin.wasm"
+
+# xtp plugin init runs this script to format the code
+format = "dotnet format && mv Plugin.csproj <%-project.name%>.csproj 2>nul"
+
+# xtp plugin init runs this script before running the format script
+prepare = "powershell ./prepare.ps1 || pwsh ./prepare.ps1 && dotnet restore"

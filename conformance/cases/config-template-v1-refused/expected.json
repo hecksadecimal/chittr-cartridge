@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "templates/config.liquid: is only allowed when \"v\" is 2"
+}

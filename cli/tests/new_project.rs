@@ -17,10 +17,15 @@ fn sdk_path() -> std::path::PathBuf {
 }
 
 fn create(parent: &Path, name: &str, canvas: bool) -> std::path::PathBuf {
+    create_abi(parent, name, canvas, 1)
+}
+
+fn create_abi(parent: &Path, name: &str, canvas: bool, abi: u32) -> std::path::PathBuf {
     new::create(
         parent,
         &NewProject {
             name: name.into(),
+            abi,
             canvas,
             sdk: Sdk::Path(sdk_path()),
         },
@@ -89,11 +94,47 @@ fn canvas_project_adds_the_guest_and_its_placement() {
 }
 
 #[test]
+fn abi_2_project_writes_a_v2_manifest_and_bindings() {
+    let tmp = TempDir::new().unwrap();
+    let root = create_abi(tmp.path(), "demo", true, 2);
+    let manifest = fs::read_to_string(root.join("cartridge/manifest.json")).unwrap();
+    assert!(manifest.contains(r#""v": 2"#), "manifest: {manifest}");
+    let server = fs::read_to_string(root.join("src/pdk.rs")).unwrap();
+    assert!(
+        server.contains("file_read") && server.contains("render_config"),
+        "the v2 server bindings carry the v2 host functions and Hooks"
+    );
+    let canvas = fs::read_to_string(root.join("canvas/src/pdk.rs")).unwrap();
+    assert!(
+        canvas.contains("file_read"),
+        "the v2 canvas bindings carry file_read"
+    );
+}
+
+#[test]
+fn server_project_accepts_fractional_observer_ages() {
+    let tmp = TempDir::new().unwrap();
+    let root = create(tmp.path(), "demo", false);
+    let lib = root.join("src/lib.rs");
+    let mut source = fs::read_to_string(&lib).unwrap();
+    source.push_str(include_str!("fixtures/observer_age.rs"));
+    fs::write(lib, source).unwrap();
+
+    let status = Command::new("cargo")
+        .args(["test", "--lib"])
+        .current_dir(&root)
+        .status()
+        .expect("test scaffolded observer deserialization");
+    assert!(status.success(), "scaffold rejected a valid Observer age");
+}
+
+#[test]
 fn default_sdk_is_the_git_repository() {
     let tmp = TempDir::new().unwrap();
     let root = new::create(
         tmp.path(),
         &NewProject {
+            abi: 1,
             name: "demo".into(),
             canvas: true,
             sdk: Sdk::Git,
@@ -116,6 +157,7 @@ fn refuses_bad_names_and_existing_directories() {
     let again = new::create(
         tmp.path(),
         &NewProject {
+            abi: 1,
             name: "demo".into(),
             canvas: false,
             sdk: Sdk::Path(sdk_path()),
@@ -136,35 +178,45 @@ fn build_script_leaves_the_sdk_to_the_environment() {
     assert!(!build.contains("MacOSX"));
 }
 
-fn build_and_check(canvas: bool) {
+fn build_and_check(canvas: bool, abi: u32) {
     if !support::wasm32_installed() {
         eprintln!("skipped: the wasm32-unknown-unknown target is not installed");
         return;
     }
     let tmp = TempDir::new().unwrap();
-    let root = create(tmp.path(), "demo", canvas);
+    let root = create_abi(tmp.path(), "demo", canvas, abi);
     let status = Command::new("sh")
         .arg("build.sh")
         .current_dir(&root)
         .status()
         .expect("run build.sh");
-    assert!(status.success(), "build.sh failed for canvas={canvas}");
+    assert!(status.success(), "build.sh failed for canvas={canvas} abi={abi}");
     assert!(root.join("cartridge/server.wasm").is_file());
     assert_eq!(root.join("cartridge/canvas.wasm").is_file(), canvas);
     let archive = pack::archive_bytes(&root.join("cartridge")).expect("archive");
     if let Err(error) = validate::validate(&archive) {
-        panic!("check failed for canvas={canvas}: {error}");
+        panic!("check failed for canvas={canvas} abi={abi}: {error}");
     }
 }
 
 #[test]
 fn server_project_builds_and_checks_without_edits() {
-    build_and_check(false);
+    build_and_check(false, 1);
 }
 
 #[test]
 fn canvas_project_builds_and_checks_without_edits() {
-    build_and_check(true);
+    build_and_check(true, 1);
+}
+
+#[test]
+fn abi_2_server_project_builds_and_checks_without_edits() {
+    build_and_check(false, 2);
+}
+
+#[test]
+fn abi_2_canvas_project_builds_and_checks_without_edits() {
+    build_and_check(true, 2);
 }
 
 /// A Server Guest with no `init` still validates: the missing Hook is a warning, because `render` is the only Hook the

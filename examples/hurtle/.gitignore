@@ -1,0 +1,4 @@
+target/
+canvas/target/
+cartridge/*.wasm
+*.cartridge

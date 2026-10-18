@@ -513,6 +513,7 @@ components:
         - isPoster
         - isPosterUser
         - isAdmin
+        - isSuspended
       properties:
         characterId:
           type: string
@@ -542,8 +543,8 @@ components:
           nullable: true
           description: The bio, or null.
         ageSweeps:
-          type: integer
-          format: int32
+          type: number
+          format: double
           nullable: true
           description: The Character's age in sweeps, or null.
         bloodCaste:
@@ -592,6 +593,9 @@ components:
         isAdmin:
           type: boolean
           description: Whether the Observer's user is an admin.
+        isSuspended:
+          type: boolean
+          description: Whether this Character is currently suspended.
     CartridgeVersionRef:
       description: One Cartridge Version as a migrate envelope names it.
       required:

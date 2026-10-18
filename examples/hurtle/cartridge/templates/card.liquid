@@ -1,0 +1,119 @@
+<section style="display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid #8a7356; border-radius: 12px">
+  <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 0.85rem"><lc-author></lc-author><lc-menu></lc-menu></div>
+  <div style="position: relative; isolation: isolate; overflow: hidden; display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid #62513e; border-radius: 10px; background-color: #1b1b21; background-image: linear-gradient(145deg, #28252a, #14151b 65%); color: #eee3cf; color-scheme: dark; box-shadow: inset 0 0 48px #00000055">
+    <div aria-hidden="true" style="position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden">
+      {% for stain in bloodStains %}
+      <span style="position: absolute; left: {{ stain.left }}%; top: -12px; width: {{ stain.size }}px; height: {{ stain.size }}px; border-radius: 40% 55% 48% 35%; background-color: {{ stain.color }}; opacity: 0.6; transform: rotate(-18deg)"></span>
+      <span style="position: absolute; left: {{ stain.left }}%; top: 0; width: 3px; height: {{ stain.drip }}px; border-radius: 0 0 50% 50%; background-color: {{ stain.color }}; opacity: 0.65"></span>
+      <span style="position: absolute; left: {{ stain.left }}%; bottom: -18px; width: {{ stain.size }}px; height: {{ stain.size }}px; border-radius: 50%; background-color: {{ stain.color }}; opacity: 0.4"></span>
+      {% endfor %}
+    </div>
+    <header style="text-align: center; padding: 4px 0 8px; border-bottom: 1px solid #c5a16a40">
+      <p style="margin: 0 0 3px; color: #c5a16a; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase">The daily word. Your final word?</p>
+      <h2 style="margin: 0; color: #eee3cf; font-family: Georgia, serif; font-size: 2.75rem; line-height: 1.1; font-weight: 900; letter-spacing: 0.13em; text-shadow: 2px 3px 0 #00000066">HURTLE</h2>
+      <p style="margin: 7px 0 0; color: #c6bcad; font-size: 0.75rem">Solve the word. Spare your neck.</p>
+    </header>
+    <div style="display: flex; justify-content: space-around; gap: 8px; color: #c5a16a; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase">
+      <span>{{ wordLength | default: 12 }} letters</span><span>6 guesses</span><span>24 hours</span>
+    </div>
+    <p style="margin: 0; color: #c6bcad; font-size: 0.8rem; line-height: 1.5">You get one attempt at the shared daily word and 6 health. Wrong, invalid-word and repeated guesses each cost 1 health. Unscored guesses give no letter clues.</p>
+    <div style="padding: 10px 12px; border-left: 3px solid #b66a61; border-radius: 0 5px 5px 0; background-color: #2a1d20; color: #eee3cf; font-size: 0.8rem; line-height: 1.5">
+      <strong style="color: #e2a59a">The price of failure:</strong> miss all six guesses and you will be suspended from the site for <strong style="color: #eee3cf">one hour</strong>. Starting means you accept.
+    </div>
+    {% if resetting %}
+    <p role="status" style="margin: 0; padding: 12px; border: 1px solid #c5a16a66; border-radius: 5px; background-color: #2a251f; color: #eee3cf; font-size: 0.85rem">The chamber is being cleared. The next word will begin automatically when cleanup finishes.</p>
+    {% else %}
+    {% unless signedIn %}
+    <p style="margin: 0; text-align: center; color: #c5a16a; font-size: 0.85rem">Log in to face the executioner.</p>
+    {% else %}
+      {% if isSuspended %}
+      <p style="margin: 0; padding: 12px; border: 1px solid #b66a6166; border-radius: 5px; background-color: #2a1d20; color: #e2a59a; font-size: 0.85rem">You are currently suspended and cannot play Hurtle. Your board stays visible below.</p>
+      {% else %}
+        {% unless started %}
+      <button type="button" data-lc-control="start" data-lc-value="start" style="padding: 12px 16px; border: 1px solid #c5a16a; border-radius: 5px; background-color: #303030; color: #f5f5f5; font-size: 0.85rem; font-weight: 800; cursor: pointer; box-shadow: 0 3px 0 #70583a">I accept the risk — start Hurtle</button>
+        {% endunless %}
+      {% endif %}
+    {% endunless %}
+    {% endif %}
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-top: 4px; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase">
+      <span style="color: #e2a59a">{{ failureCount | default: 0 }} fallen today</span>
+      <span style="color: #aaa395">{{ splatterCount | default: 0 }} splatters today</span>
+    </div>
+    <lc-canvas width="320" height="400" label="Hurtle word puzzle, health bar and keyboard. Each wrong guess costs one health and splatters the board; death leaves three splatters." touch="none"></lc-canvas>
+    <p style="margin: 0; color: #aaa395; font-size: 0.7rem; line-height: 1.5; text-align: center">Type or tap to guess. Enter submits; Del erases.<br>Wrong, invalid and repeated guesses spill your colour without extra clues. At zero health, three splatters mark your death.</p>
+    {% if badgeRewardStatus == 'granted' %}
+    <p style="margin: 0; color: #c5a16a; font-size: 0.8rem; text-align: center">One guess. One escape. You have the first-guess badge!</p>
+    {% elsif badgeRewardStatus == 'failed' %}
+    <p style="margin: 0; color: #e2a59a; font-size: 0.75rem">Your win still counts. {{ badgeRewardError | escape }} Ask an admin to check the badge ID and the poster's grant_badge permission.</p>
+    {% elsif badgeRewardStatus == 'pending' or badgeRewardStatus == 'ready' %}
+    <p style="margin: 0; color: #c5a16a; font-size: 0.75rem">Your win is saved. The first-guess badge award is not yet confirmed.</p>
+    {% endif %}
+    <div style="display: flex; flex-wrap: wrap; gap: 14px; padding-top: 10px; border-top: 1px solid #c5a16a30">
+      <div style="flex: 1 1 130px; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+        <h3 style="margin: 0; color: #e2a59a; font-family: Georgia, serif; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase">Obituary{% if obituaryCount > 0 %} <span style="color: #aaa395; letter-spacing: 0.04em">· {{ obituaryCount }}</span>{% endif %}</h3>
+        {% if obituary.size > 0 %}
+        <div style="position: relative; min-width: 0">
+          <ul style="margin: 0; padding: 0{% if obituaryScrolls %} 0 18px{% endif %}; list-style: none; display: flex; flex-direction: column; gap: 4px; max-height: 128px; overflow-y: auto; overscroll-behavior: contain; font-size: 0.75rem">
+            {% for soul in obituary %}
+            <li style="flex: none; display: flex; align-items: center; gap: 6px; height: 16px; line-height: 16px; min-width: 0; color: #eee3cf"><span aria-hidden="true" style="flex: none; width: 8px; height: 8px; border-radius: 50%; background-color: {{ soul.color }}"></span><span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ soul.mention }}</span></li>
+            {% endfor %}
+          </ul>
+          {% if obituaryScrolls %}
+          <div aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: 0; height: 24px; pointer-events: none; background-image: linear-gradient(to bottom, #17181e00, #17181e)"></div>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% if obituaryScrolls %}
+        <p style="margin: 0; color: #e2a59a; font-size: 0.7rem; font-weight: 700">↓ Scroll for more</p>
+        {% endif %}
+        {% if obituaryMore > 0 %}
+        <p style="margin: 0; color: #aaa395; font-size: 0.7rem">{% if obituary.size > 0 %}and {{ obituaryMore }} more{% else %}{{ obituaryMore }} whose names are not yet known{% endif %}</p>
+        {% elsif obituary.size == 0 %}
+        <p style="margin: 0; color: #aaa395; font-size: 0.7rem">No one has fallen today.</p>
+        {% endif %}
+      </div>
+      <div style="flex: 1 1 130px; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+        <h3 style="margin: 0; color: #83b37f; font-family: Georgia, serif; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase">Survivors{% if survivorsCount > 0 %} <span style="color: #aaa395; letter-spacing: 0.04em">· {{ survivorsCount }}</span>{% endif %}</h3>
+        {% if survivors.size > 0 %}
+        <div style="position: relative; min-width: 0">
+          <ul style="margin: 0; padding: 0{% if survivorsScrolls %} 0 18px{% endif %}; list-style: none; display: flex; flex-direction: column; gap: 4px; max-height: 128px; overflow-y: auto; overscroll-behavior: contain; font-size: 0.75rem">
+            {% for soul in survivors %}
+            <li style="flex: none; display: flex; align-items: center; gap: 6px; height: 16px; line-height: 16px; min-width: 0; color: #eee3cf"><span aria-hidden="true" style="flex: none; width: 8px; height: 8px; border-radius: 50%; background-color: {{ soul.color }}"></span><span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ soul.mention }}</span></li>
+            {% endfor %}
+          </ul>
+          {% if survivorsScrolls %}
+          <div aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: 0; height: 24px; pointer-events: none; background-image: linear-gradient(to bottom, #17181e00, #17181e)"></div>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% if survivorsScrolls %}
+        <p style="margin: 0; color: #83b37f; font-size: 0.7rem; font-weight: 700">↓ Scroll for more</p>
+        {% endif %}
+        {% if survivorsMore > 0 %}
+        <p style="margin: 0; color: #aaa395; font-size: 0.7rem">{% if survivors.size > 0 %}and {{ survivorsMore }} more{% else %}{{ survivorsMore }} whose names are not yet known{% endif %}</p>
+        {% elsif survivors.size == 0 %}
+        <p style="margin: 0; color: #aaa395; font-size: 0.7rem">No one has escaped today.</p>
+        {% endif %}
+      </div>
+    </div>
+    {% if isAdmin %}
+    <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid #b66a6166">
+      <p style="margin: 0; color: #e2a59a; font-size: 0.7rem">Admin only · Permanently clears this Hurtle's saved data for everyone. Posted replies and existing suspensions remain.</p>
+      <button type="button" data-lc-control="reset-day" data-lc-value="reset" style="padding: 10px 12px; border: 1px solid #b66a61; border-radius: 5px; background-color: #44232a; color: #f5e4df; font-size: 0.8rem; font-weight: 700; cursor: pointer">{% if resetting %}Resume cleanup{% else %}Clear all data &amp; start next day{% endif %}</button>
+      {% unless resetting %}
+      <form data-lc-control="set-win-badge" style="display: flex; flex-direction: column; gap: 6px; padding-top: 8px">
+        <p style="margin: 0; color: #c5a16a; font-size: 0.8rem; font-weight: 700">First-guess win badge</p>
+        <p style="margin: 0; color: #c6bcad; font-size: 0.7rem; overflow-wrap: anywhere">Current badge: {% if firstGuessBadgeEnabled %}{{ firstGuessBadgeId | escape }}{% else %}disabled{% endif %}</p>
+        <input type="text" name="badgeId" maxlength="128" aria-label="First-guess win badge ID" placeholder="Existing badge ID (not its name)" style="min-width: 0; width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #8a7356; border-radius: 5px; background-color: #17181e; color: #f5f5f5; font-size: 0.8rem">
+        <p style="margin: 0; color: #aaa395; font-size: 0.7rem">Save an empty field to disable awards. The poster needs grant_badge permission. Clear all data also clears this setting.</p>
+        <button type="submit" style="padding: 8px 12px; border: 1px solid #c5a16a; border-radius: 5px; background-color: #303030; color: #f5f5f5; font-size: 0.8rem; font-weight: 700; cursor: pointer">Save badge setting</button>
+      </form>
+      {% endunless %}
+    </div>
+    {% endif %}
+  </div>
+  <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap">
+    <lc-reply></lc-reply><lc-rechitt></lc-rechitt>
+  </div>
+  <lc-reactions></lc-reactions>
+</section>

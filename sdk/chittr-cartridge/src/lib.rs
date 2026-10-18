@@ -1,4 +1,4 @@
-//! Chittr Cartridge SDK for Server Guests (ABI `v: 1`).
+//! Chittr Cartridge SDK for Server Guests (ABI `v: 1` and `v: 2`).
 //!
 //! Enable the `server` feature (on by default) to get the typed Hook envelopes and the
 //! `#[hook]` attribute. A Hook is written as a plain function over typed input and output;
@@ -59,10 +59,14 @@ pub use serde;
 #[cfg(any(feature = "server", feature = "canvas"))]
 pub use serde_json;
 
-/// The ABI version every host-to-guest payload carries.
+/// The ABI version every v1 host-to-guest payload carries.
 pub const ABI_VERSION: u32 = 1;
 
-/// Names of the Hooks a Server Guest can export. `#[hook]` rejects any other name.
+/// The ABI version every v2 host-to-guest payload carries.
+pub const ABI_VERSION_V2: u32 = 2;
+
+/// Names of the Hooks a Server Guest can export. `#[hook]` rejects any other name. `on_file` and `render_config` are
+/// ABI v2; a v1 archive that exports them is refused at upload.
 pub const HOOK_NAMES: &[&str] = &[
     "init",
     "render",
@@ -74,18 +78,21 @@ pub const HOOK_NAMES: &[&str] = &[
     "on_view",
     "on_timer",
     "on_canvas_message",
+    "on_file",
+    "render_config",
 ];
 
 #[cfg(feature = "server")]
 pub mod prelude {
     pub use crate::envelope::{
-        CanvasMessageInput, CanvasMessageOutput, CartridgeVersionRef, ChittRef, ControlInput,
-        ControlOutput, GateResult, HookError, InitInput, InitOutput, MigrateInput, MigrateOutput,
-        Observer, ReactionGateInput, RechittGateInput, RenderInput, RenderOutput, ReplyGateInput,
-        TimerInput, TimerOutput, ViewInput, ViewOutput,
+        CanvasMessageInput, CanvasMessageOutput, CartridgeVersionRef, ChittRef, ConfigAccess,
+        ControlInput, ControlOutput, FileInput, FileOutput, FileRef, GateResult, HookError,
+        InitInput, InitOutput, MigrateInput, MigrateOutput, Observer, ReactionGateInput,
+        RechittGateInput, RenderConfigInput, RenderConfigOutput, RenderInput, RenderOutput,
+        ReplyGateInput, ServerLimits, TimerInput, TimerOutput, ViewInput, ViewOutput,
     };
     pub use crate::hook;
-    pub use crate::host::{asset, AssetError};
+    pub use crate::host::{asset, file_close, file_read, AssetError, FileChunk, FileError};
     pub use crate::log;
     pub use crate::logging::LogLevel;
     pub use crate::serde_json::{json, Value};

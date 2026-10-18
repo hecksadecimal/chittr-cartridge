@@ -28,6 +28,9 @@ schemas.
 **The rule for changes.** Any change that adds a Hook or a host function updates the schema in the same change. A Hook or
 host function that exists in the host but not in the schema is not part of v1.
 
+The Server Guest's `Observer` includes `isSuspended`, a boolean indicating whether the viewing Character currently has an
+active suspension. It does not expose the suspension reason or end time.
+
 ## 1. Canvas Guest exports
 
 `canvas.wasm` must export `memory` and the functions `start` and `frame`. It may export `event`. Any other export is refused

@@ -1,0 +1,40 @@
+<section style="display: flex; flex-direction: column; gap: 12px; padding: 12px; border: 1px solid #555; border-radius: 8px">
+  <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px"><lc-author></lc-author><lc-menu></lc-menu></div>
+  <h2 style="font-family: monospace; font-size: 1.1rem; font-weight: 700; margin: 0">Breakout</h2>
+  <lc-canvas width="368" height="540" fullscreen label="Breakout. A 32 by 32 brick board, power-ups, particles, a level editor and fullscreen. Move the paddle with arrow keys, A and D, or your pointer; Space or a tap launches, fires the laser and restarts. The poster can tap EDIT to open the level editor, where bricks can be any colour and levels can be renamed."></lc-canvas>
+  {% if admin %}
+  <p style="margin: 0; font-family: monospace; font-size: 0.8rem; opacity: 0.85">You're the poster: tap <strong>EDIT</strong> in the canvas to build levels. Pick any colour and a strength, paint the 32×32 grid, <strong>RENAME</strong> the level, then <strong>SAVE</strong> it or <strong>PLAYTEST</strong> it first.</p>
+  {% endif %}
+  <p style="margin: 0; font-size: 0.8rem; opacity: 0.7">{{ level_count }} levels: {{ level_names | join: " · " }}</p>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px">
+    <div style="display: flex; flex-direction: column; gap: 4px">
+      <strong style="font-family: monospace">Daily — {{ day }} (UTC)</strong>
+      {% if daily_scores.size > 0 %}
+      <ol style="margin: 0; padding-left: 24px; font-family: monospace">
+        {% for entry in daily_scores %}
+        <li>{{ entry.trolltag }} — {{ entry.score }}</li>
+        {% endfor %}
+      </ol>
+      {% else %}
+      <p style="margin: 0; opacity: 0.7">No scores today yet.</p>
+      {% endif %}
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 4px">
+      <strong style="font-family: monospace">All-time</strong>
+      {% if all_time_scores.size > 0 %}
+      <ol style="margin: 0; padding-left: 24px; font-family: monospace">
+        {% for entry in all_time_scores %}
+        <li>{{ entry.trolltag }} — {{ entry.score }}</li>
+        {% endfor %}
+      </ol>
+      {% else %}
+      <p style="margin: 0; opacity: 0.7">No scores yet. Play a round to claim the first spot.</p>
+      {% endif %}
+    </div>
+  </div>
+  <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap">
+    <lc-reply></lc-reply>
+    <lc-rechitt></lc-rechitt>
+  </div>
+  <lc-reactions></lc-reactions>
+</section>

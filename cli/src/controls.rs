@@ -13,10 +13,17 @@ const CONTROLS_MAX: usize = 32;
 const ENUM_VALUES_MAX: usize = 100;
 const ENUM_VALUE_CHARS_MAX: usize = 64;
 const FIELDS_MAX: usize = 16;
+const CONFIRM_CHARS_MAX: usize = 200;
 const STRING_CHARS_MAX: u64 = 2000;
 
 static CONTROL_NAME: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9_-]{0,31}$").expect("valid regex"));
+
+/// Whether `name` is a valid Control name (and thus a valid picker name): lowercase letter first, then lowercase
+/// letters, digits, `-` or `_`, at most 32 characters.
+pub fn valid_control_name(name: &str) -> bool {
+    CONTROL_NAME.is_match(name)
+}
 static FIELD_NAME: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$").expect("valid regex"));
 
@@ -42,8 +49,51 @@ pub enum ControlDeclaration {
     Fields(Vec<(String, FieldSpec)>),
 }
 
+/// Who may use a Control (ABI v2). v1 Controls are all `Public`. A `Public` Control appears on the public card; a
+/// non-public one appears only in `templates/config.liquid`, and placement must match.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Audience {
+    Public,
+    Owner,
+    Admin,
+    OwnerOrAdmin,
+}
+
+impl Audience {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "public" => Some(Audience::Public),
+            "owner" => Some(Audience::Owner),
+            "admin" => Some(Audience::Admin),
+            "owner_or_admin" => Some(Audience::OwnerOrAdmin),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Audience::Public => "public",
+            Audience::Owner => "owner",
+            Audience::Admin => "admin",
+            Audience::OwnerOrAdmin => "owner_or_admin",
+        }
+    }
+
+    pub fn is_public(self) -> bool {
+        matches!(self, Audience::Public)
+    }
+}
+
+/// A declared Control: its value or fields, its audience, and an optional host-rendered confirmation prompt.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Control {
+    pub declaration: ControlDeclaration,
+    pub audience: Audience,
+    pub confirm: Option<String>,
+}
+
 /// The declared Controls, in manifest order.
-pub type ControlDeclarations = Vec<(String, ControlDeclaration)>;
+pub type ControlDeclarations = Vec<(String, Control)>;
 
 /// Parses the manifest's `controls`. Absent means none. The error is the message to report under `manifest.json`.
 pub fn parse(value: Option<&Value>) -> std::result::Result<ControlDeclarations, String> {
@@ -73,27 +123,58 @@ pub fn parse(value: Option<&Value>) -> std::result::Result<ControlDeclarations, 
     Ok(out)
 }
 
-fn parse_declaration(name: &str, value: &Value) -> std::result::Result<ControlDeclaration, String> {
+fn parse_declaration(name: &str, value: &Value) -> std::result::Result<Control, String> {
     let Some(map) = value.as_object() else {
         return Err(format!(
-            r#"Control "{name}" must be {{ "value": ... }} or {{ "fields": ... }}"#
+            r#"Control "{name}" must be an object with "value" or "fields", and optional "audience" and "confirm""#
         ));
     };
+    const ALLOWED: [&str; 4] = ["value", "fields", "audience", "confirm"];
+    if let Some(unknown) = map.keys().find(|key| !ALLOWED.contains(&key.as_str())) {
+        return Err(format!(r#"Control "{name}" has an unknown key "{unknown}""#));
+    }
     let has_value = map.contains_key("value");
     let has_fields = map.contains_key("fields");
-    if map.len() != 1 || (!has_value && !has_fields) {
+    if has_value == has_fields {
         return Err(format!(
             r#"Control "{name}" must declare exactly one of "value" or "fields""#
         ));
     }
-    if has_value {
-        Ok(ControlDeclaration::Value(parse_enum(name, &map["value"])?))
+    let declaration = if has_value {
+        ControlDeclaration::Value(parse_enum(name, &map["value"])?)
     } else {
-        Ok(ControlDeclaration::Fields(parse_fields(
-            name,
-            &map["fields"],
-        )?))
-    }
+        ControlDeclaration::Fields(parse_fields(name, &map["fields"])?)
+    };
+    let audience = match map.get("audience") {
+        None => Audience::Public,
+        Some(value) => value
+            .as_str()
+            .and_then(Audience::parse)
+            .ok_or_else(|| {
+                format!(
+                    r#"Control "{name}" audience must be one of public, owner, admin or owner_or_admin"#
+                )
+            })?,
+    };
+    let confirm = match map.get("confirm") {
+        None => None,
+        Some(value) => {
+            let text = value.as_str().filter(|text| {
+                !text.trim().is_empty() && js_len(text) <= CONFIRM_CHARS_MAX
+            });
+            Some(text.ok_or_else(|| {
+                format!(
+                    r#"Control "{name}" confirm must be plain text of 1 to {CONFIRM_CHARS_MAX} characters"#
+                )
+            })?
+            .to_string())
+        }
+    };
+    Ok(Control {
+        declaration,
+        audience,
+        confirm,
+    })
 }
 
 fn parse_enum(name: &str, value: &Value) -> std::result::Result<Vec<String>, String> {

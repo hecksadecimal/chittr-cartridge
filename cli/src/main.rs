@@ -37,6 +37,9 @@ enum Command {
         /// Also create a Canvas Guest (canvas/), and place its <lc-canvas> in the card.
         #[arg(long)]
         canvas: bool,
+        /// The Cartridge ABI to target: 1 (default) or 2.
+        #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..=2))]
+        abi: u32,
         /// Use a local checkout of the SDK (its sdk/chittr-cartridge directory) instead of the GitHub repository.
         #[arg(long, value_name = "DIR")]
         sdk_path: Option<PathBuf>,
@@ -92,11 +95,13 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
         Command::New {
             name,
             canvas,
+            abi,
             sdk_path,
         } => {
             let sdk = sdk_path.map(Sdk::Path).unwrap_or(Sdk::Git);
             let project = NewProject {
                 name: name.clone(),
+                abi,
                 canvas,
                 sdk,
             };

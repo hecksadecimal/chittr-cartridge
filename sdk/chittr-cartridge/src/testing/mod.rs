@@ -112,6 +112,11 @@ impl TestHost {
         fake::add_asset(path, bytes.as_ref().to_vec());
     }
 
+    /// Registers a delivered file under `handle`, for `file_read` and `file_close` (ABI v2).
+    pub fn put_file(&self, handle: &str, bytes: impl AsRef<[u8]>) {
+        fake::put_file(handle, bytes.as_ref().to_vec());
+    }
+
     /// The timers scheduled and not yet fired, earliest first.
     pub fn timers(&self) -> Vec<PendingTimer> {
         fake::timers()

@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "name": "Hurtle",
+  "version": "0.2.12",
+  "controls": {
+    "start": { "value": { "enum": ["start"] } },
+    "reset-day": { "value": { "enum": ["reset"] } },
+    "set-win-badge": { "fields": { "badgeId": { "type": "string", "maxLength": 128 } } }
+  }
+}

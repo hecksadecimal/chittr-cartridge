@@ -1,8 +1,6 @@
-<section style="display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid #555; border-radius: 8px">
+<section style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid rgba(127, 127, 127, 0.35); border-radius: 12px">
   <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px"><lc-author></lc-author><lc-menu></lc-menu></div>
-  <h2 style="font-family: monospace; font-size: 1.1rem; font-weight: 700; margin: 0">Collaborative canvas</h2>
-  <lc-canvas width="960" height="480" touch="none" label="Shared 512 by 512 pixel-art canvas. Select a brush radius and color, then draw with Brush; choose Transparent to clear pixels. Info inspects who last touched one pixel. Pan to move around, use arrow keys and W/A/S/D to pan, and use the zoom controls to change magnification. Current view coordinates appear at the top left. Log in to paint."></lc-canvas>
-  {% unless signedIn %}<p style="margin: 0; opacity: 0.7">Log in to add to the shared painting.</p>{% endunless %}
+  <lc-canvas width="960" height="640" touch="none" fullscreen label="Place, a shared 512 by 512 pixel board. Tap or click a pixel to select it and see who placed it, pick one of 32 colors, then press Place; each placement starts a 15-second cooldown. Drag to pan, pinch or use the zoom buttons to zoom. Keys: arrow keys move the selection (or pan when nothing is selected), W/A/S/D pan, plus, minus and 0 zoom, Q and E change color, Enter or Space places, Backspace clears the selection. Use the expand button for fullscreen. Log in to place pixels."></lc-canvas>
   <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap">
     <lc-reply></lc-reply>
     <lc-rechitt></lc-rechitt>

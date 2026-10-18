@@ -18,7 +18,7 @@ server = ["dep:serde", "dep:serde_json", "dep:extism-pdk", "dep:chittr-cartridge
 testing = ["server"]
 # The Canvas Guest API: a Canvas2D-like context that encodes the command buffer (see design.md). The encoder
 # itself needs no host, so its tests run natively.
-canvas = ["dep:serde", "dep:serde_json", "dep:extism-pdk"]
+canvas = ["dep:serde", "dep:serde_json", "dep:extism-pdk", "dep:base64"]
 
 [dependencies]
 base64 = { version = "0.22", optional = true }

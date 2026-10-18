@@ -1,4 +1,4 @@
-//! The Canvas Guest API (ABI `v: 1`, enabled with the `canvas` feature). A Canvas2D-like context over the
+//! The Canvas Guest API (ABI `v: 1` and `v: 2`, enabled with the `canvas` feature). A Canvas2D-like context over the
 //! binary command buffer: draw calls are encoded into a `CommandBuffer`, and `Canvas2D::submit` hands the
 //! whole frame to the host in one call. The encoder is pure and tested natively; the host
 //! functions are the only part that needs the Extism runtime.
@@ -22,11 +22,12 @@ pub mod host;
 
 pub use encode::{
     rgba, CommandBuffer, Composite, FillRule, LineCap, LineJoin, TextAlign, TextBaseline,
+    BLIT_PIXELS_MAX, PALETTE_ENTRIES_MAX,
 };
-pub use envelope::{CanvasError, EventInput, FrameInput, Reply, StartInput};
+pub use envelope::{CanvasError, CanvasLimits, EventInput, FileRef, FrameInput, Reply, StartInput};
 pub use host::{
-    load_image, load_sound, measure_text, play_sound, request_frame, send, set_fps, stop_sound,
-    PlayOptions, TextMetrics,
+    file_close, file_read, load_image, load_sound, measure_text, play_sound, request_frame, send,
+    set_fps, stop_sound, FileChunk, PlayOptions, TextMetrics,
 };
 
 /// A Canvas2D-like context: every drawing method of `CommandBuffer`, plus `submit`.
@@ -64,10 +65,12 @@ pub mod prelude {
     pub use super::encode::{
         rgba, Composite, FillRule, LineCap, LineJoin, TextAlign, TextBaseline,
     };
-    pub use super::envelope::{CanvasError, EventInput, FrameInput, Reply, StartInput};
+    pub use super::envelope::{
+        CanvasError, CanvasLimits, EventInput, FileRef, FrameInput, Reply, StartInput,
+    };
     pub use super::host::{
-        load_image, load_sound, measure_text, play_sound, request_frame, send, set_fps, stop_sound,
-        PlayOptions, TextMetrics,
+        file_close, file_read, load_image, load_sound, measure_text, play_sound, request_frame,
+        send, set_fps, stop_sound, FileChunk, PlayOptions, TextMetrics,
     };
     pub use super::{Canvas2D, CommandBuffer};
     pub use crate::extism_pdk::{plugin_fn, FnResult, Json};

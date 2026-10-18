@@ -1,36 +1,40 @@
-//! A shared pixel-art canvas. Canvas messages are accepted only from signed-in Observers;
-//! the canvas contents are stored per Chitt and pushed to every viewer after a change.
+//! Place: a shared pixel board in the style of r/place. A signed-in Observer places one pixel, then waits out a
+//! cooldown. The board is kept in 32-by-32 tiles, each stamped with when it last changed, so a placement rewrites one
+//! tile and a render sends the most recently changed tiles first. The canvas fetches any tile the render had no room
+//! for.
 
 mod pdk;
 
+use chittr_cartridge::kv;
+use chittr_cartridge::push::{push_render, PushTarget};
 use extism_pdk::Error;
 use pdk::types::*;
-use push::PushTarget;
 use serde_json::{json, Map, Value};
-use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
-use std::collections::{BTreeMap, HashSet};
 
-const BOARD_KEY: &str = "painting";
 const WIDTH: usize = 512;
 const HEIGHT: usize = 512;
-const FORMER_WIDTH: usize = 1024;
-const FORMER_HEIGHT: usize = 1024;
-const TOUCH_KEY_WIDTH: usize = FORMER_WIDTH;
-const PREVIOUS_WIDTH: usize = 128;
-const PREVIOUS_HEIGHT: usize = 72;
-const LEGACY_WIDTH: usize = 64;
-const LEGACY_HEIGHT: usize = 36;
-const PIXELS: usize = WIDTH * HEIGHT;
-const COLORS: u64 = 16 * 6;
-const MAX_POINTS: usize = 64;
-const CAS_ATTEMPTS: usize = 16;
-const TOUCH_TILE_SIDE: usize = 16;
-const TOUCH_TILES_PER_ROW: usize = WIDTH / TOUCH_TILE_SIDE;
+const TILE_SIDE: usize = 32;
+const TILES_PER_ROW: usize = WIDTH / TILE_SIDE;
+const TILE_COUNT: usize = TILES_PER_ROW * (HEIGHT / TILE_SIDE);
+const TILE_PIXELS: usize = TILE_SIDE * TILE_SIDE;
+/// The r/place 2022 palette's size. The canvas holds the colors themselves.
+const COLORS: u64 = 32;
+/// An unplaced pixel. The canvas shows it as white, as r/place starts out.
 const EMPTY: u8 = u8::MAX;
-const BOARD_STORAGE_MAGIC: [u8; 3] = [0xfe, b'P', b'B'];
-const BOARD_STORAGE_RLE: u8 = 1;
-const BOARD_STORAGE_RAW: u8 = 0;
+/// Seconds between one Character's placements.
+const COOLDOWN_SECONDS: u64 = 15;
+/// Tiles one fetch may ask for.
+const MAX_FETCH: usize = 32;
+const CAS_ATTEMPTS: usize = 16;
+/// The counter every placement draws its stamp from.
+const STAMP_KEY: &str = "place:stamp";
+/// Inline tile data a render may carry. The canvas state is capped at 16 KiB of JSON, and the stamps and the
+/// host's own fields need the rest.
+const STATE_TILE_BUDGET: usize = 13 * 1024;
+/// Tile data one fetch reply may carry, under the 4 KiB reply cap.
+const REPLY_TILE_BUDGET: usize = 3 * 1024;
+/// The base64url alphabet the canvas decodes, unpadded.
+const BASE64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Point {
@@ -38,18 +42,33 @@ struct Point {
     y: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct PixelTouch {
     name: String,
     trolltag: String,
 }
 
-thread_local! {
-    static BOARD_BUFFER: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+/// A tile as stored and sent: its stamp and its wire data (see `encode_tile`). `None` is a tile nobody has placed on.
+type StoredTile = Option<(u32, Vec<u8>)>;
+
+/// One stored tile: the stamp of its last change, and its pixels in row order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Tile {
+    stamp: u32,
+    pixels: Vec<u8>,
+}
+
+impl Tile {
+    fn empty() -> Self {
+        Self { stamp: 0, pixels: vec![EMPTY; TILE_PIXELS] }
+    }
 }
 
 pub(crate) fn init(_input: InitInput) -> Result<InitOutput, Error> {
-    Ok(InitOutput { content: "A shared canvas for everyone.".to_string(), ..Default::default() })
+    Ok(InitOutput {
+        content: "A shared pixel board. Place a pixel every 15 seconds, and make something together.".to_string(),
+        ..Default::default()
+    })
 }
 
 pub(crate) fn render(input: RenderInput) -> Result<RenderOutput, Error> {
@@ -65,16 +84,53 @@ pub(crate) fn render(input: RenderInput) -> Result<RenderOutput, Error> {
 }
 
 fn render_card(input: &RenderInput) -> Result<RenderOutput, HookError> {
-    let board = read_board()?;
+    let tiles = read_stored_tiles()?;
+    let mut state = canvas_state(&tiles);
+    match &input.observer {
+        Some(observer) => {
+            state.insert("canPlace".to_string(), json!(!observer.character_id.is_empty()));
+            state.insert("cooldown".to_string(), json!(cooldown_left(&observer.character_id)?));
+            // Only admins are told they are, so only their canvas draws the cooldown switch.
+            if observer.is_admin {
+                state.insert("admin".to_string(), json!(true));
+            }
+        }
+        None => {
+            state.insert("canPlace".to_string(), json!(false));
+        }
+    }
     Ok(RenderOutput {
         template: "card".to_string(),
         data: object(json!({ "signedIn": input.observer.is_some() })),
-        canvas: Some(object(json!({
-            "pixels": encode_board(&board),
-            "canPaint": input.observer.is_some(),
-        }))),
+        canvas: Some(state),
         error: None,
     })
+}
+
+/// The canvas state: every tile's stamp, and the data of as many tiles as fit, most recently changed first. A tile
+/// whose data is absent is either unchanged since the canvas last saw it or one the canvas fetches.
+fn canvas_state(tiles: &[StoredTile]) -> Map<String, Value> {
+    let mut stamps = Vec::with_capacity(TILE_COUNT * 4);
+    for tile in tiles {
+        stamps.extend_from_slice(&tile.as_ref().map_or(0, |(stamp, _)| *stamp).to_le_bytes());
+    }
+    let mut order: Vec<usize> = (0..tiles.len()).filter(|index| tiles[*index].is_some()).collect();
+    order.sort_by_key(|index| std::cmp::Reverse(tiles[*index].as_ref().map_or(0, |(stamp, _)| *stamp)));
+    let mut inline = Vec::new();
+    let mut budget = STATE_TILE_BUDGET;
+    for index in order {
+        let Some((_, data)) = &tiles[index] else { continue };
+        let cost = encoded_len(data.len()) + 10;
+        if cost > budget {
+            continue;
+        }
+        budget -= cost;
+        inline.push(json!([index, encode_base64(data)]));
+    }
+    object(json!({
+        "stamps": encode_base64(&stamps),
+        "tiles": inline,
+    }))
 }
 
 pub(crate) fn on_canvas_message(input: CanvasMessageInput) -> Result<CanvasMessageOutput, Error> {
@@ -92,413 +148,370 @@ pub(crate) fn on_canvas_message(input: CanvasMessageInput) -> Result<CanvasMessa
     })
 }
 
-/// Serves a message: a pixel lookup (`info`), or a stroke from a signed-in Observer. Returns the reply.
+/// Serves a message: a pixel lookup (`info`), a tile fetch (`tiles`), or a placement from a signed-in Observer
+/// (`place`).
 fn handle_message(input: CanvasMessageInput) -> Result<Map<String, Value>, HookError> {
-    let message = Value::Object(input.message.clone());
-    if message.get("type").and_then(Value::as_str) == Some("info") {
-        let point = parse_point(&message)?;
-        let touch = read_touch(point)?;
-        return Ok(object(match touch {
-            Some(touch) => json!({
-                "type": "pixel_info",
-                "name": touch.name,
-                "trolltag": touch.trolltag,
-            }),
-            None => json!({ "type": "pixel_info", "touched": false }),
-        }));
+    let message = Value::Object(input.message);
+    match message.get("type").and_then(Value::as_str) {
+        Some("info") => {
+            let point = parse_point(&message)?;
+            Ok(object(match read_touch(point)? {
+                Some(touch) => json!({
+                    "type": "pixel_info",
+                    "name": touch.name,
+                    "trolltag": touch.trolltag,
+                }),
+                None => json!({ "type": "pixel_info", "touched": false }),
+            }))
+        }
+        Some("tiles") => fetch_tiles(&message),
+        Some("place") => {
+            let observer = require_observer(input.observer)?;
+            let point = parse_point(&message)?;
+            let color = parse_color(&message)?;
+            let trolltag = Some(observer.trolltag.as_str())
+                .filter(|tag| !tag.is_empty())
+                .ok_or_else(|| HookError::new("bad_observer", "your Character has no trolltag"))?
+                .to_string();
+            // Admins may skip the cooldown with the canvas's switch. The flag means nothing from anyone else.
+            let skip_cooldown =
+                observer.is_admin && message.get("skipCooldown").and_then(Value::as_bool) == Some(true);
+            let touch = PixelTouch { name: observer.name, trolltag };
+            place_pixel(&observer.character_id, point, color, &touch, skip_cooldown)
+        }
+        _ => Err(HookError::new("bad_input", "unknown message")),
     }
+}
 
-    let observer = require_observer(input.observer)?;
-    let (color, points) = parse_paint(&message)?;
-    let trolltag = Some(observer.trolltag.as_str())
-        .filter(|tag| !tag.is_empty())
-        .ok_or_else(|| HookError::new("bad_observer", "your Character has no trolltag"))?
-        .to_string();
-    let touch = PixelTouch {
-        name: observer.name,
-        trolltag,
-    };
-    let changed = paint(color, &points)?;
-    record_touches(&points, &touch)?;
-    if changed {
-        push::push_render(PushTarget::All).map_err(kv_failure)?;
+/// Places one pixel if the Character's cooldown has run out, or at once when `skip_cooldown` (an admin's choice). The
+/// cooldown is claimed first, so two placements at once can't both get through, and handed back when nothing ends up
+/// placed. A skipped cooldown is neither checked nor started, and any cooldown already running is left as it is.
+fn place_pixel(
+    character_id: &str,
+    point: Point,
+    color: u8,
+    touch: &PixelTouch,
+    skip_cooldown: bool,
+) -> Result<Map<String, Value>, HookError> {
+    let key = cooldown_key(character_id);
+    if !skip_cooldown && !kv::set_if_absent(&key, b"1", Some(COOLDOWN_SECONDS)).map_err(kv_failure)? {
+        return Ok(object(json!({ "type": "cooldown", "wait": cooldown_left(character_id)? })));
     }
-    Ok(object(json!({ "painted": points.len() })))
+    let hand_back = || if skip_cooldown { Ok(()) } else { kv::delete(&key).map(|_| ()) };
+    let written = match paint(color, point, touch) {
+        Ok(written) => written,
+        Err(error) => {
+            let _ = hand_back();
+            return Err(error);
+        }
+    };
+    let Some((tile, stamp)) = written else {
+        hand_back().map_err(kv_failure)?;
+        return Ok(object(json!({ "type": "unchanged" })));
+    };
+    push_render(PushTarget::All).map_err(kv_failure)?;
+    let wait = if skip_cooldown { 0 } else { COOLDOWN_SECONDS };
+    Ok(object(json!({ "type": "placed", "stamps": [[tile, stamp]], "wait": wait })))
+}
+
+fn cooldown_key(character_id: &str) -> String {
+    format!("place:cooldown:{character_id}")
+}
+
+/// Whole seconds left on a Character's cooldown; 0 when it may place.
+fn cooldown_left(character_id: &str) -> Result<u64, HookError> {
+    Ok(kv::get(&cooldown_key(character_id))
+        .map_err(kv_failure)?
+        .map_or(0, |entry| entry.ttl_seconds.unwrap_or(COOLDOWN_SECONDS)))
 }
 
 fn parse_point(message: &Value) -> Result<Point, HookError> {
-    let x = message
-        .get("x")
-        .and_then(Value::as_u64)
-        .filter(|x| *x < WIDTH as u64)
-        .ok_or_else(|| HookError::new("bad_point", "pixel is outside the canvas"))?
-        as usize;
-    let y = message
-        .get("y")
-        .and_then(Value::as_u64)
-        .filter(|y| *y < HEIGHT as u64)
-        .ok_or_else(|| HookError::new("bad_point", "pixel is outside the canvas"))?
-        as usize;
-    Ok(Point { x, y })
-}
-
-fn touch_key(point: Point) -> String {
-    format!("touch:{}", point.y * TOUCH_KEY_WIDTH + point.x)
-}
-
-fn touch_tile(point: Point) -> (usize, usize) {
-    let tile_x = point.x / TOUCH_TILE_SIDE;
-    let tile_y = point.y / TOUCH_TILE_SIDE;
-    let offset = (point.y % TOUCH_TILE_SIDE) * TOUCH_TILE_SIDE + point.x % TOUCH_TILE_SIDE;
-    (tile_y * TOUCH_TILES_PER_ROW + tile_x, offset)
-}
-
-fn touch_tile_key(tile: usize) -> String {
-    format!("touches:{tile}")
-}
-
-fn record_touches(points: &[Point], touch: &PixelTouch) -> Result<(), HookError> {
-    let mut tiles: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
-    let mut recorded = HashSet::new();
-    for point in points {
-        let pixel_index = point.y * WIDTH + point.x;
-        if recorded.insert(pixel_index) {
-            let (tile, offset) = touch_tile(*point);
-            tiles.entry(tile).or_default().push(offset);
-        }
-    }
-    for (tile, offsets) in tiles {
-        let key = touch_tile_key(tile);
-        let mut written = false;
-        for _ in 0..CAS_ATTEMPTS {
-            let previous = kv::get(&key).map_err(kv_failure)?;
-            let mut touches = match &previous {
-                Some(entry) => serde_json::from_slice::<Vec<Option<PixelTouch>>>(&entry.value)
-                    .map_err(|error| HookError::new("invalid_touch", error.to_string()))?,
-                None => vec![None; TOUCH_TILE_SIDE * TOUCH_TILE_SIDE],
-            };
-            if touches.len() != TOUCH_TILE_SIDE * TOUCH_TILE_SIDE {
-                return Err(HookError::new(
-                    "invalid_touch",
-                    "saved pixel history has an invalid size",
-                ));
-            }
-            for offset in &offsets {
-                touches[*offset] = Some(touch.clone());
-            }
-            let value = serde_json::to_vec(&touches)
-                .map_err(|error| HookError::new("invalid_touch", error.to_string()))?;
-            let expected = previous.as_ref().map(|entry| entry.value.as_slice());
-            if kv::compare_and_swap(&key, expected, value).map_err(kv_failure)? {
-                written = true;
-                break;
-            }
-        }
-        if !written {
-            return Err(HookError::new(
-                "storage_busy",
-                "pixel history is busy; try painting again",
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn read_touch(point: Point) -> Result<Option<PixelTouch>, HookError> {
-    let (tile, offset) = touch_tile(point);
-    if let Some(entry) = kv::get(&touch_tile_key(tile)).map_err(kv_failure)? {
-        let touches: Vec<Option<PixelTouch>> = serde_json::from_slice(&entry.value)
-            .map_err(|error| HookError::new("invalid_touch", error.to_string()))?;
-        if touches.len() != TOUCH_TILE_SIDE * TOUCH_TILE_SIDE {
-            return Err(HookError::new(
-                "invalid_touch",
-                "saved pixel history has an invalid size",
-            ));
-        }
-        if let Some(touch) = touches[offset].clone() {
-            return Ok(Some(touch));
-        }
-    }
-    let Some(entry) = kv::get(&touch_key(point)).map_err(kv_failure)? else {
-        return Ok(None);
+    let coordinate = |name: &str, limit: usize| {
+        message
+            .get(name)
+            .and_then(Value::as_u64)
+            .filter(|value| *value < limit as u64)
+            .map(|value| value as usize)
+            .ok_or_else(|| HookError::new("bad_point", "pixel is outside the board"))
     };
-    serde_json::from_slice(&entry.value)
-        .map(Some)
-        .map_err(|error| HookError::new("invalid_touch", error.to_string()))
+    Ok(Point { x: coordinate("x", WIDTH)?, y: coordinate("y", HEIGHT)? })
+}
+
+fn parse_color(message: &Value) -> Result<u8, HookError> {
+    message
+        .get("color")
+        .and_then(Value::as_u64)
+        .filter(|color| *color < COLORS)
+        .map(|color| color as u8)
+        .ok_or_else(|| HookError::new("bad_color", "choose a palette color"))
+}
+
+/// Answers a fetch with the asked-for tiles that fit in one reply, as `[id, stamp, data]`. The canvas asks again
+/// for any it did not get.
+fn fetch_tiles(message: &Value) -> Result<Map<String, Value>, HookError> {
+    let mut ids = Vec::new();
+    for id in message
+        .get("ids")
+        .and_then(Value::as_array)
+        .filter(|ids| !ids.is_empty() && ids.len() <= MAX_FETCH)
+        .ok_or_else(|| HookError::new("bad_tiles", "ask for 1 to 32 tiles"))?
+    {
+        let id = id
+            .as_u64()
+            .filter(|id| *id < TILE_COUNT as u64)
+            .ok_or_else(|| HookError::new("bad_tiles", "a tile id is outside the board"))?
+            as usize;
+        if !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    let keys: Vec<String> = ids.iter().map(|id| tile_key(*id)).collect();
+    let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
+    let values = kv::get_many(&keys).map_err(kv_failure)?;
+    let mut tiles = Vec::new();
+    let mut budget = REPLY_TILE_BUDGET;
+    for (id, value) in ids.iter().zip(values) {
+        let (stamp, data) = match value {
+            Some(bytes) => split_stored(&bytes)?,
+            None => (0, Vec::new()),
+        };
+        let cost = encoded_len(data.len()) + 20;
+        if cost > budget && !tiles.is_empty() {
+            break;
+        }
+        budget = budget.saturating_sub(cost);
+        tiles.push(json!([id, stamp, encode_base64(&data)]));
+    }
+    Ok(object(json!({ "type": "tiles", "tiles": tiles })))
 }
 
 fn require_observer(observer: Option<Observer>) -> Result<Observer, HookError> {
     let observer = observer
-        .ok_or_else(|| HookError::new("logged_out", "log in to paint on the shared canvas"))?;
+        .ok_or_else(|| HookError::new("logged_out", "log in to place pixels"))?;
     if observer.character_id.is_empty() {
         return Err(HookError::new(
             "bad_observer",
-            "a Character is required to paint",
+            "a Character is required to place pixels",
         ));
     }
     Ok(observer)
 }
 
-fn parse_paint(message: &Value) -> Result<(u8, Vec<Point>), HookError> {
-    if message.get("type").and_then(Value::as_str) != Some("paint") {
-        return Err(HookError::new("bad_input", "expected a paint message"));
-    }
-    let color = message
-        .get("color")
-        .and_then(Value::as_u64)
-        .filter(|color| *color < COLORS || *color == u64::from(EMPTY))
-        .ok_or_else(|| HookError::new("bad_color", "choose a palette color or transparent"))?
-        as u8;
-    let coordinates = message
-        .get("points")
-        .and_then(Value::as_array)
-        .filter(|points| {
-            !points.is_empty() && points.len() <= MAX_POINTS * 2 && points.len() % 2 == 0
-        })
-        .ok_or_else(|| {
-            HookError::new("bad_points", "a paint stroke must contain 1 to 64 points")
-        })?;
-    let mut points = Vec::with_capacity(coordinates.len() / 2);
-    for pair in coordinates.chunks_exact(2) {
-        let x = pair[0]
-            .as_u64()
-            .filter(|x| *x < WIDTH as u64)
-            .ok_or_else(|| HookError::new("bad_point", "paint point is outside the canvas"))?
-            as usize;
-        let y = pair[1]
-            .as_u64()
-            .filter(|y| *y < HEIGHT as u64)
-            .ok_or_else(|| HookError::new("bad_point", "paint point is outside the canvas"))?
-            as usize;
-        points.push(Point { x, y });
-    }
-    Ok((color, points))
+/// The tile a point is in, and its offset inside that tile.
+fn tile_of(point: Point) -> (usize, usize) {
+    let tile = (point.y / TILE_SIDE) * TILES_PER_ROW + point.x / TILE_SIDE;
+    (tile, (point.y % TILE_SIDE) * TILE_SIDE + point.x % TILE_SIDE)
 }
 
-fn paint(color: u8, points: &[Point]) -> Result<bool, HookError> {
+fn tile_key(tile: usize) -> String {
+    format!("place:tile:{tile}")
+}
+
+fn who_key(tile: usize) -> String {
+    format!("place:who:{tile}")
+}
+
+/// Sets one pixel and records who placed it. Returns its tile and new stamp, or `None` when the pixel already had
+/// that color.
+fn paint(color: u8, point: Point, touch: &PixelTouch) -> Result<Option<(usize, u32)>, HookError> {
+    let (tile, offset) = tile_of(point);
+    let key = tile_key(tile);
+    let mut stamp = None;
     for _ in 0..CAS_ATTEMPTS {
-        let previous = kv::get(BOARD_KEY).map_err(kv_failure)?;
-        let (changed, swapped) = BOARD_BUFFER.with(|buffer| {
-            let mut board = buffer.borrow_mut();
-            match &previous {
-                Some(entry) => decode_board_into(&entry.value, &mut board)?,
-                None => {
-                    board.clear();
-                    board.resize(PIXELS, EMPTY);
-                }
-            }
-            let mut changed = false;
-            for point in points {
-                let pixel = &mut board[point.y * WIDTH + point.x];
-                if *pixel != color {
-                    *pixel = color;
-                    changed = true;
-                }
-            }
-            if !changed {
-                return Ok::<_, HookError>((false, false));
-            }
-            let expected = previous.as_ref().map(|entry| entry.value.as_slice());
-            let encoded = encode_board_storage(&board);
-            let swapped = kv::compare_and_swap(BOARD_KEY, expected, encoded).map_err(kv_failure)?;
-            Ok((true, swapped))
-        })?;
-        if !changed {
-            return Ok(false);
-        }
-        if swapped {
-            return Ok(true);
-        }
-    }
-    Err(HookError::new(
-        "storage_busy",
-        "the canvas is busy; try painting again",
-    ))
-}
-
-fn read_board() -> Result<Vec<u8>, HookError> {
-    match kv::get(BOARD_KEY).map_err(kv_failure)? {
-        Some(entry) => decode_board(&entry.value),
-        None => Ok(vec![EMPTY; PIXELS]),
-    }
-}
-
-fn decode_board(bytes: &[u8]) -> Result<Vec<u8>, HookError> {
-    let mut board = Vec::with_capacity(PIXELS);
-    decode_board_into(bytes, &mut board)?;
-    Ok(board)
-}
-
-fn decode_board_into(bytes: &[u8], board: &mut Vec<u8>) -> Result<(), HookError> {
-    board.clear();
-    if bytes.starts_with(&BOARD_STORAGE_MAGIC) {
-        return match bytes.get(3).copied() {
-            Some(BOARD_STORAGE_RLE) => decode_packed_board(&bytes[4..], board),
-            Some(BOARD_STORAGE_RAW) if bytes.len() == PIXELS + 4 => {
-                let pixels = &bytes[4..];
-                validate_board_bytes(pixels)?;
-                board.extend_from_slice(pixels);
-                Ok(())
-            }
-            _ => Err(HookError::new(
-                "invalid_canvas",
-                "the saved canvas data is invalid",
-            )),
+        let previous = kv::get(&key).map_err(kv_failure)?.map(|entry| entry.value);
+        let mut stored = match &previous {
+            Some(bytes) => decode_stored_tile(bytes)?,
+            None => Tile::empty(),
         };
-    }
-    validate_board_bytes(bytes)?;
-    if bytes.len() == PIXELS {
-        board.extend_from_slice(bytes);
-        return Ok(());
-    }
-    if bytes.len() == FORMER_WIDTH * FORMER_HEIGHT {
-        board.resize(PIXELS, EMPTY);
-        for y in 0..HEIGHT {
-            let old_row = &bytes[y * FORMER_WIDTH..(y + 1) * FORMER_WIDTH];
-            let new_row = &mut board[y * WIDTH..(y + 1) * WIDTH];
-            new_row.copy_from_slice(&old_row[..WIDTH]);
+        if stored.pixels[offset] == color {
+            return Ok(None);
         }
-        return Ok(());
-    }
-    if bytes.len() == PREVIOUS_WIDTH * PREVIOUS_HEIGHT {
-        board.resize(PIXELS, EMPTY);
-        for y in 0..PREVIOUS_HEIGHT {
-            let old_row = &bytes[y * PREVIOUS_WIDTH..(y + 1) * PREVIOUS_WIDTH];
-            let new_row = &mut board[y * WIDTH..y * WIDTH + PREVIOUS_WIDTH];
-            new_row.copy_from_slice(old_row);
+        stored.pixels[offset] = color;
+        // The stamp is drawn once, when something changes. A tile's stamp never goes backwards, even when a later
+        // placement wrote it first.
+        let placement = match stamp {
+            Some(stamp) => stamp,
+            None => *stamp.insert(kv::incr(STAMP_KEY, 1, None).map_err(kv_failure)? as u32),
+        };
+        stored.stamp = placement.max(stored.stamp.wrapping_add(1));
+        if kv::compare_and_swap(&key, previous.as_deref(), encode_stored_tile(&stored)).map_err(kv_failure)? {
+            record_touch(tile, offset, touch)?;
+            return Ok(Some((tile, stored.stamp)));
         }
-        return Ok(());
     }
-    if bytes.len() == LEGACY_WIDTH * LEGACY_HEIGHT {
-        board.resize(PIXELS, EMPTY);
-        for y in 0..LEGACY_HEIGHT {
-            let old_row = &bytes[y * LEGACY_WIDTH..(y + 1) * LEGACY_WIDTH];
-            let new_row = &mut board[y * WIDTH..y * WIDTH + LEGACY_WIDTH];
-            new_row.copy_from_slice(old_row);
-        }
-        return Ok(());
-    }
-    Err(HookError::new(
-        "invalid_canvas",
-        "the saved canvas data is invalid",
-    ))
+    Err(HookError::new("storage_busy", "the board is busy; try again"))
 }
 
-fn decode_packed_board(bytes: &[u8], board: &mut Vec<u8>) -> Result<(), HookError> {
-    board.resize(PIXELS, EMPTY);
-    let (mut cursor, mut previous_end) = (0, 0usize);
-    while cursor < bytes.len() {
-        let gap = read_varint(bytes, &mut cursor).ok_or_else(invalid_canvas_data)? as usize;
-        let run = read_varint(bytes, &mut cursor).ok_or_else(invalid_canvas_data)? as usize;
-        let color = *bytes.get(cursor).ok_or_else(invalid_canvas_data)?;
-        cursor += 1;
-        let start = previous_end
-            .checked_add(gap)
-            .ok_or_else(invalid_canvas_data)?;
-        let end = start.checked_add(run).ok_or_else(invalid_canvas_data)?;
-        if run == 0 || end > PIXELS || u64::from(color) >= COLORS {
-            return Err(invalid_canvas_data());
-        }
-        board[start..end].fill(color);
-        previous_end = end;
-    }
-    Ok(())
-}
-
-fn invalid_canvas_data() -> HookError {
-    HookError::new("invalid_canvas", "the saved canvas data is invalid")
-}
-
-fn validate_board_bytes(bytes: &[u8]) -> Result<(), HookError> {
-    if bytes
-        .iter()
-        .any(|pixel| *pixel != EMPTY && u64::from(*pixel) >= COLORS)
-    {
-        return Err(HookError::new(
-            "invalid_canvas",
-            "the saved canvas data is invalid",
-        ));
-    }
-    Ok(())
-}
-
-fn encode_board(board: &[u8]) -> String {
-    const BASE64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-    let packed = pack_board(board);
-    let mut encoded = String::with_capacity(packed.len().div_ceil(3) * 4);
-    for chunk in packed.chunks(3) {
-        let value = (u32::from(chunk[0]) << 16)
-            | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
-            | u32::from(*chunk.get(2).unwrap_or(&0));
-        encoded.push(BASE64[((value >> 18) & 63) as usize] as char);
-        encoded.push(BASE64[((value >> 12) & 63) as usize] as char);
-        if chunk.len() > 1 {
-            encoded.push(BASE64[((value >> 6) & 63) as usize] as char);
-        }
-        if chunk.len() > 2 {
-            encoded.push(BASE64[(value & 63) as usize] as char);
+/// Pixel history for one tile: a 1-based placer index per pixel (0 for none) as little-endian u16s, then the placers
+/// as a JSON list of `[name, trolltag]`. Placers no pixel points at any more are dropped on each write.
+fn record_touch(tile: usize, offset: usize, touch: &PixelTouch) -> Result<(), HookError> {
+    let key = who_key(tile);
+    for _ in 0..CAS_ATTEMPTS {
+        let previous = kv::get(&key).map_err(kv_failure)?.map(|entry| entry.value);
+        let (mut indices, mut placers) = match &previous {
+            Some(bytes) => decode_touches(bytes)?,
+            None => (vec![0; TILE_PIXELS], Vec::new()),
+        };
+        let placer = match placers.iter().position(|placer| placer == touch) {
+            Some(index) => index,
+            None => {
+                placers.push(touch.clone());
+                placers.len() - 1
+            }
+        };
+        indices[offset] = placer as u16 + 1;
+        let value = encode_touches(&indices, &placers);
+        if kv::compare_and_swap(&key, previous.as_deref(), value).map_err(kv_failure)? {
+            return Ok(());
         }
     }
-    encoded
+    Err(HookError::new("storage_busy", "pixel history is busy; try again"))
 }
 
-fn encode_board_storage(board: &[u8]) -> Vec<u8> {
-    let header_len = BOARD_STORAGE_MAGIC.len() + 1;
-    let packed = pack_board_limited(board, board.len().saturating_sub(header_len + 1));
-    let (mode, payload) = match packed {
-        Some(packed) => (BOARD_STORAGE_RLE, packed),
-        None => (BOARD_STORAGE_RAW, board.to_vec()),
+fn encode_touches(indices: &[u16], placers: &[PixelTouch]) -> Vec<u8> {
+    let mut remap = vec![0u16; placers.len() + 1];
+    let mut kept = Vec::new();
+    for index in indices {
+        let index = *index as usize;
+        if index != 0 && remap[index] == 0 {
+            kept.push(json!([placers[index - 1].name, placers[index - 1].trolltag]));
+            remap[index] = kept.len() as u16;
+        }
+    }
+    let mut value = Vec::with_capacity(TILE_PIXELS * 2 + kept.len() * 24);
+    for index in indices {
+        value.extend_from_slice(&remap[*index as usize].to_le_bytes());
+    }
+    value.extend_from_slice(Value::Array(kept).to_string().as_bytes());
+    value
+}
+
+fn decode_touches(bytes: &[u8]) -> Result<(Vec<u16>, Vec<PixelTouch>), HookError> {
+    let invalid = || HookError::new("invalid_touch", "saved pixel history is invalid");
+    if bytes.len() < TILE_PIXELS * 2 {
+        return Err(invalid());
+    }
+    let (indices, placers) = bytes.split_at(TILE_PIXELS * 2);
+    let placers: Vec<(String, String)> = serde_json::from_slice(placers).map_err(|_| invalid())?;
+    let indices: Vec<u16> = indices
+        .chunks_exact(2)
+        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+        .collect();
+    if indices.iter().any(|index| *index as usize > placers.len()) {
+        return Err(invalid());
+    }
+    let placers = placers
+        .into_iter()
+        .map(|(name, trolltag)| PixelTouch { name, trolltag })
+        .collect();
+    Ok((indices, placers))
+}
+
+fn read_touch(point: Point) -> Result<Option<PixelTouch>, HookError> {
+    let (tile, offset) = tile_of(point);
+    let Some(entry) = kv::get(&who_key(tile)).map_err(kv_failure)? else {
+        return Ok(None);
     };
-    let mut stored = Vec::with_capacity(BOARD_STORAGE_MAGIC.len() + 1 + payload.len());
-    stored.extend_from_slice(&BOARD_STORAGE_MAGIC);
-    stored.push(mode);
-    stored.extend_from_slice(&payload);
+    let (indices, placers) = decode_touches(&entry.value)?;
+    Ok(match indices[offset] {
+        0 => None,
+        index => Some(placers[index as usize - 1].clone()),
+    })
+}
+
+/// Every tile, in one read.
+fn read_stored_tiles() -> Result<Vec<StoredTile>, HookError> {
+    let keys: Vec<String> = (0..TILE_COUNT).map(tile_key).collect();
+    let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
+    kv::get_many(&keys)
+        .map_err(kv_failure)?
+        .into_iter()
+        .map(|value| value.map(|bytes| split_stored(&bytes)).transpose())
+        .collect()
+}
+
+/// A stored tile is its stamp as a little-endian u32, then its wire data (see `encode_tile`).
+fn split_stored(bytes: &[u8]) -> Result<(u32, Vec<u8>), HookError> {
+    if bytes.len() < 4 {
+        return Err(invalid_board_data());
+    }
+    let stamp = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+    Ok((stamp, bytes[4..].to_vec()))
+}
+
+fn decode_stored_tile(bytes: &[u8]) -> Result<Tile, HookError> {
+    let (stamp, data) = split_stored(bytes)?;
+    Ok(Tile { stamp, pixels: decode_tile(&data)? })
+}
+
+fn encode_stored_tile(tile: &Tile) -> Vec<u8> {
+    let mut stored = tile.stamp.to_le_bytes().to_vec();
+    stored.extend_from_slice(&encode_tile(&tile.pixels));
     stored
 }
 
-fn pack_board(board: &[u8]) -> Vec<u8> {
-    pack_board_limited(board, usize::MAX).expect("unbounded board encoding cannot be limited")
-}
-
-fn pack_board_limited(board: &[u8], limit: usize) -> Option<Vec<u8>> {
+/// A tile's wire data: runs of `(gap, length, color)`, the gap and length as varints, skipping unplaced pixels; or,
+/// when that would not be shorter, the 1,024 raw pixels. Every encoding but the raw one is shorter than 1,024 bytes,
+/// so the length tells them apart.
+fn encode_tile(pixels: &[u8]) -> Vec<u8> {
     let mut packed = Vec::new();
-    let mut index = 0;
-    let mut previous_end = 0;
-    while index < board.len() {
-        if board[index] == EMPTY {
+    let (mut index, mut previous_end) = (0, 0);
+    while index < pixels.len() {
+        if pixels[index] == EMPTY {
             index += 1;
             continue;
         }
-        let color = board[index];
+        let color = pixels[index];
         let start = index;
-        while index < board.len() && board[index] == color {
+        while index < pixels.len() && pixels[index] == color {
             index += 1;
         }
-        if !write_varint_limited(&mut packed, (start - previous_end) as u32, limit)
-            || !write_varint_limited(&mut packed, (index - start) as u32, limit)
-            || packed.len() == limit
-        {
-            return None;
-        }
+        write_varint(&mut packed, (start - previous_end) as u32);
+        write_varint(&mut packed, (index - start) as u32);
         packed.push(color);
         previous_end = index;
+        if packed.len() >= TILE_PIXELS {
+            return pixels.to_vec();
+        }
     }
-    Some(packed)
+    packed
 }
 
-fn write_varint_limited(output: &mut Vec<u8>, mut value: u32, limit: usize) -> bool {
-    while value >= 0x80 {
-        if output.len() == limit {
-            return false;
+fn decode_tile(data: &[u8]) -> Result<Vec<u8>, HookError> {
+    if data.len() == TILE_PIXELS {
+        if data.iter().any(|pixel| *pixel != EMPTY && u64::from(*pixel) >= COLORS) {
+            return Err(invalid_board_data());
         }
+        return Ok(data.to_vec());
+    }
+    let mut pixels = vec![EMPTY; TILE_PIXELS];
+    let (mut cursor, mut previous_end) = (0, 0usize);
+    while cursor < data.len() {
+        let gap = read_varint(data, &mut cursor).ok_or_else(invalid_board_data)? as usize;
+        let run = read_varint(data, &mut cursor).ok_or_else(invalid_board_data)? as usize;
+        let color = *data.get(cursor).ok_or_else(invalid_board_data)?;
+        cursor += 1;
+        let start = previous_end.checked_add(gap).ok_or_else(invalid_board_data)?;
+        let end = start.checked_add(run).ok_or_else(invalid_board_data)?;
+        if run == 0 || end > TILE_PIXELS || u64::from(color) >= COLORS {
+            return Err(invalid_board_data());
+        }
+        pixels[start..end].fill(color);
+        previous_end = end;
+    }
+    Ok(pixels)
+}
+
+fn invalid_board_data() -> HookError {
+    HookError::new("invalid_board", "the saved board data is invalid")
+}
+
+fn write_varint(output: &mut Vec<u8>, mut value: u32) {
+    while value >= 0x80 {
         output.push((value as u8 & 0x7f) | 0x80);
         value >>= 7;
     }
-    if output.len() == limit {
-        return false;
-    }
     output.push(value as u8);
-    true
 }
 
 fn read_varint(bytes: &[u8], cursor: &mut usize) -> Option<u32> {
@@ -517,150 +530,31 @@ fn read_varint(bytes: &[u8], cursor: &mut usize) -> Option<u32> {
     None
 }
 
+fn encoded_len(bytes: usize) -> usize {
+    (bytes * 4).div_ceil(3)
+}
+
+fn encode_base64(bytes: &[u8]) -> String {
+    let mut encoded = String::with_capacity(encoded_len(bytes.len()));
+    for chunk in bytes.chunks(3) {
+        let value = (u32::from(chunk[0]) << 16)
+            | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
+            | u32::from(*chunk.get(2).unwrap_or(&0));
+        encoded.push(BASE64[((value >> 18) & 63) as usize] as char);
+        encoded.push(BASE64[((value >> 12) & 63) as usize] as char);
+        if chunk.len() > 1 {
+            encoded.push(BASE64[((value >> 6) & 63) as usize] as char);
+        }
+        if chunk.len() > 2 {
+            encoded.push(BASE64[(value & 63) as usize] as char);
+        }
+    }
+    encoded
+}
+
 fn kv_failure(error: kv::KvError) -> HookError {
     HookError::new(error.code, error.message)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn accepts_a_valid_stroke_and_bounds_color_and_coordinates() {
-        let message = json!({ "type": "paint", "color": 95, "points": [0, 0, 511, 511] });
-        let (color, points) = parse_paint(&message).unwrap();
-        assert_eq!(color, 95);
-        assert_eq!(points, [Point { x: 0, y: 0 }, Point { x: 511, y: 511 }]);
-
-        assert_eq!(
-            parse_paint(&json!({ "type": "paint", "color": 96, "points": [0, 0] }))
-                .unwrap_err()
-                .code,
-            "bad_color"
-        );
-        assert_eq!(
-            parse_paint(&json!({ "type": "paint", "color": 255, "points": [0, 0] }))
-                .unwrap()
-                .0,
-            EMPTY
-        );
-        assert_eq!(
-            parse_paint(&json!({ "type": "paint", "color": 0, "points": [512, 0] }))
-                .unwrap_err()
-                .code,
-            "bad_point"
-        );
-        assert_eq!(
-            parse_paint(&json!({ "type": "paint", "color": 0, "points": [] }))
-                .unwrap_err()
-                .code,
-            "bad_points"
-        );
-    }
-
-    #[test]
-    fn info_requests_validate_coordinates_and_build_stable_pixel_keys() {
-        assert_eq!(
-            parse_point(&json!({ "type": "info", "x": 511, "y": 511 })).unwrap(),
-            Point { x: 511, y: 511 }
-        );
-        assert_eq!(
-            parse_point(&json!({ "type": "info", "x": 512, "y": 0 }))
-                .unwrap_err()
-                .code,
-            "bad_point"
-        );
-        assert_eq!(touch_key(Point { x: 1, y: 1 }), "touch:1025");
-        assert_eq!(touch_tile(Point { x: 1, y: 1 }), (0, 17));
-        assert_eq!(touch_tile(Point { x: 511, y: 511 }), (1023, 255));
-        assert_eq!(touch_tile_key(1023), "touches:1023");
-    }
-
-    #[test]
-    fn rejects_logged_out_paint_messages_before_storage_access() {
-        assert_eq!(require_observer(None).unwrap_err().code, "logged_out");
-    }
-
-    #[test]
-    fn sparse_board_encoding_keeps_white_black_palette_indices_and_fits_the_canvas_state() {
-        let mut board = vec![EMPTY; PIXELS];
-        board[1] = 0;
-        board[2] = 95;
-        let encoded = encode_board(&board);
-        assert_eq!(encoded, "AQEAAAFf");
-        assert!(
-            serde_json::to_vec(&json!({ "pixels": encoded }))
-                .unwrap()
-                .len()
-                < 16 * 1024
-        );
-        assert_eq!(encode_board(&vec![EMPTY; PIXELS]), "");
-        assert_eq!(decode_board(&board).unwrap(), board);
-        assert_eq!(decode_board(&[0; PIXELS]).unwrap().len(), PIXELS);
-        assert_eq!(
-            decode_board(&[0; PIXELS - 1]).unwrap_err().code,
-            "invalid_canvas"
-        );
-    }
-
-    #[test]
-    fn expands_previous_boards_without_shifting_existing_pixels() {
-        let mut previous = vec![EMPTY; PREVIOUS_WIDTH * PREVIOUS_HEIGHT];
-        previous[PREVIOUS_WIDTH + 1] = 41;
-        let expanded = decode_board(&previous).unwrap();
-        assert_eq!(expanded.len(), PIXELS);
-        assert_eq!(expanded[WIDTH + 1], 41);
-        assert_eq!(expanded[WIDTH], EMPTY);
-        assert_eq!(expanded[PREVIOUS_WIDTH + 1], EMPTY);
-
-        let mut legacy = vec![EMPTY; LEGACY_WIDTH * LEGACY_HEIGHT];
-        legacy[LEGACY_WIDTH + 1] = 42;
-        let expanded = decode_board(&legacy).unwrap();
-        assert_eq!(expanded.len(), PIXELS);
-        assert_eq!(expanded[WIDTH + 1], 42);
-        assert_eq!(expanded[WIDTH], EMPTY);
-        assert_eq!(expanded[LEGACY_WIDTH + 1], EMPTY);
-    }
-
-    #[test]
-    fn reduces_the_former_1024_board_to_512_without_shifting_retained_pixels() {
-        let mut former = vec![EMPTY; FORMER_WIDTH * FORMER_HEIGHT];
-        former[FORMER_WIDTH + 1] = 41;
-        former[511 * FORMER_WIDTH + 511] = 42;
-        former[511 * FORMER_WIDTH + 512] = 43;
-        former[512 * FORMER_WIDTH] = 44;
-        let reduced = decode_board(&former).unwrap();
-        assert_eq!(reduced.len(), PIXELS);
-        assert_eq!(reduced[WIDTH + 1], 41);
-        assert_eq!(reduced[511 * WIDTH + 511], 42);
-        assert_eq!(reduced[0], EMPTY);
-    }
-
-    #[test]
-    fn stored_boards_use_compact_runs_and_preserve_legacy_and_dense_formats() {
-        let mut sparse = vec![EMPTY; PIXELS];
-        sparse[1] = 0;
-        sparse[2] = 95;
-        let stored = encode_board_storage(&sparse);
-        assert_eq!(&stored[..3], &BOARD_STORAGE_MAGIC);
-        assert_eq!(stored[3], BOARD_STORAGE_RLE);
-        assert!(stored.len() < 16);
-        assert_eq!(decode_board(&stored).unwrap(), sparse);
-
-        let dense = (0..PIXELS)
-            .map(|index| (index % 2) as u8)
-            .collect::<Vec<_>>();
-        let stored = encode_board_storage(&dense);
-        assert_eq!(stored[3], BOARD_STORAGE_RAW);
-        assert_eq!(decode_board(&stored).unwrap(), dense);
-
-        let legacy = vec![95; PIXELS];
-        assert_eq!(decode_board(&legacy).unwrap(), legacy);
-    }
-}
-
-// Host calls. The board code reads the KV store and pushes renders through the two modules below, which wrap the
-// generated bindings in the shapes the code was written against. A failure is the output's `error` field, never a trap.
 
 impl HookError {
     fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
@@ -678,92 +572,257 @@ fn object(value: Value) -> Map<String, Value> {
     }
 }
 
-/// The code of a generated error enum, as its wire string.
-fn code_of<T: serde::Serialize>(code: &T) -> String {
-    serde_json::to_value(code)
-        .ok()
-        .and_then(|value| value.as_str().map(str::to_string))
-        .unwrap_or_else(|| "unavailable".to_string())
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chittr_cartridge::testing::{self, HookClass, TestHost};
+    use serde::de::DeserializeOwned;
+    use serde::Serialize;
 
-/// The KV store: a read and a compare-and-swap over the generated bindings.
-mod kv {
-    use super::pdk;
-    use super::pdk::types::{KvCompareAndSwapInput, KvKeyInput};
-    use base64::engine::general_purpose::STANDARD;
-    use base64::Engine as _;
-    use extism_pdk::Error;
-
-    /// A KV failure: the host's code and message, or `unavailable` when the call itself failed.
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct KvError {
-        pub code: String,
-        pub message: String,
+    fn wire<T: DeserializeOwned>(input: impl Serialize) -> T {
+        serde_json::from_value(serde_json::to_value(input).expect("input serializes"))
+            .expect("input matches the generated ABI type")
     }
 
-    /// A stored value.
-    pub struct Entry {
-        pub value: Vec<u8>,
+    fn placer(id: &str) -> chittr_cartridge::envelope::Observer {
+        let mut observer = testing::observer(id);
+        observer.profile.insert("trolltag".to_string(), json!(id));
+        observer
     }
 
-    fn failed(error: Error) -> KvError {
-        KvError { code: "unavailable".to_string(), message: error.to_string() }
+    fn send(chitt: &testing::ChittRef, id: Option<&str>, message: Value) -> CanvasMessageOutput {
+        let input = testing::canvas_message(chitt, id.map(placer), message, Some(1));
+        on_canvas_message(wire(input)).expect("the Hook returns")
     }
 
-    fn wire(error: pdk::types::KvError) -> KvError {
-        KvError { code: super::code_of(&error.code), message: error.message }
+    fn place(chitt: &testing::ChittRef, id: &str, x: usize, y: usize, color: u8) -> Map<String, Value> {
+        let output = send(chitt, Some(id), json!({ "type": "place", "x": x, "y": y, "color": color }));
+        assert!(output.error.is_none(), "{:?}", output.error);
+        output.reply.unwrap()
     }
 
-    fn invalid(message: &str) -> KvError {
-        KvError { code: "invalid".to_string(), message: message.to_string() }
+    fn render_state(chitt: &testing::ChittRef, id: Option<&str>) -> Map<String, Value> {
+        let output = render(wire(testing::render(chitt, id.map(placer)))).expect("the Hook returns");
+        assert!(output.error.is_none(), "{:?}", output.error);
+        output.canvas.expect("render has canvas state")
     }
 
-    pub fn get(key: &str) -> Result<Option<Entry>, KvError> {
-        let reply = pdk::kv_get(KvKeyInput { key: key.to_string() }).map_err(failed)?;
-        if let Some(error) = reply.error {
-            return Err(wire(error));
+    fn decode_base64(text: &str) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let (mut bits, mut count) = (0u32, 0);
+        for byte in text.bytes() {
+            let value = BASE64.iter().position(|c| *c == byte).unwrap() as u32;
+            bits = (bits << 6) | value;
+            count += 6;
+            if count >= 8 {
+                count -= 8;
+                bytes.push((bits >> count) as u8);
+                bits &= (1 << count) - 1;
+            }
         }
-        match reply.value {
-            Some(value) => STANDARD
-                .decode(value)
-                .map(|value| Some(Entry { value }))
-                .map_err(|_| invalid("a stored value is not base64")),
-            None => Ok(None),
+        bytes
+    }
+
+    fn stamps(state: &Map<String, Value>) -> Vec<u32> {
+        decode_base64(state["stamps"].as_str().unwrap())
+            .chunks_exact(4)
+            .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
+            .collect()
+    }
+
+    #[test]
+    fn placements_need_a_palette_color_and_a_point_on_the_board() {
+        let _host = TestHost::new();
+        let chitt = testing::chitt("chitt-1", "poster-1");
+        for (message, code) in [
+            (json!({ "type": "place", "x": 0, "y": 0, "color": 32 }), "bad_color"),
+            (json!({ "type": "place", "x": 0, "y": 0, "color": 255 }), "bad_color"),
+            (json!({ "type": "place", "x": 512, "y": 0, "color": 0 }), "bad_point"),
+            (json!({ "type": "paint", "color": 0, "points": [0, 0] }), "bad_input"),
+        ] {
+            assert_eq!(send(&chitt, Some("ada"), message).error.unwrap().code, code);
         }
     }
 
-    pub fn compare_and_swap(key: &str, expected: Option<&[u8]>, value: impl AsRef<[u8]>) -> Result<bool, KvError> {
-        let reply = pdk::kv_compare_and_swap(KvCompareAndSwapInput {
-            key: key.to_string(),
-            expected: expected.map(|bytes| STANDARD.encode(bytes)),
-            value: STANDARD.encode(value),
-        })
-        .map_err(failed)?;
-        if let Some(error) = reply.error {
-            return Err(wire(error));
-        }
-        reply.swapped.ok_or_else(|| invalid("the host's reply is missing a field"))
-    }
-}
-
-/// Render Pushes: the Observers of this Chitt are told that its card changed.
-mod push {
-    use super::kv::KvError;
-    use super::pdk;
-    use super::pdk::types::PushRenderInput;
-
-    pub enum PushTarget {
-        All,
+    #[test]
+    fn tiles_cover_the_board_in_row_order() {
+        assert_eq!(tile_of(Point { x: 0, y: 0 }), (0, 0));
+        assert_eq!(tile_of(Point { x: 33, y: 1 }), (1, 33));
+        assert_eq!(tile_of(Point { x: 511, y: 511 }), (TILE_COUNT - 1, TILE_PIXELS - 1));
     }
 
-    pub fn push_render(_target: PushTarget) -> Result<(), KvError> {
-        let reply = pdk::push_render(PushRenderInput { character_id: None }).map_err(|error| KvError {
-            code: "unavailable".to_string(),
-            message: error.to_string(),
-        })?;
-        match reply.error {
-            Some(error) => Err(KvError { code: super::code_of(&error.code), message: error.message }),
-            None => Ok(()),
+    #[test]
+    fn tile_encoding_is_compact_for_sparse_tiles_and_raw_for_noisy_ones() {
+        let mut sparse = vec![EMPTY; TILE_PIXELS];
+        sparse[1] = 0;
+        sparse[2] = 31;
+        let data = encode_tile(&sparse);
+        assert_eq!(data, [1, 1, 0, 0, 1, 31]);
+        assert_eq!(decode_tile(&data).unwrap(), sparse);
+        assert!(encode_tile(&vec![EMPTY; TILE_PIXELS]).is_empty());
+
+        let noisy: Vec<u8> = (0..TILE_PIXELS).map(|index| (index % 2) as u8).collect();
+        let data = encode_tile(&noisy);
+        assert_eq!(data.len(), TILE_PIXELS);
+        assert_eq!(decode_tile(&data).unwrap(), noisy);
+        assert!(decode_tile(&[0, 0, 0]).is_err());
+        assert!(decode_tile(&[0, 1, 32]).is_err());
+    }
+
+    #[test]
+    fn logged_out_viewers_can_look_but_not_place() {
+        let host = TestHost::new();
+        let chitt = testing::chitt("chitt-1", "poster-1");
+        let output = send(&chitt, None, json!({ "type": "place", "x": 0, "y": 0, "color": 1 }));
+        assert_eq!(output.error.unwrap().code, "logged_out");
+        let output = send(&chitt, None, json!({ "type": "info", "x": 0, "y": 0 }));
+        assert_eq!(output.reply.unwrap()["touched"], json!(false));
+        host.begin_hook(HookClass::Render);
+        let state = render_state(&chitt, None);
+        assert_eq!(state["canPlace"], json!(false));
+        assert!(state.get("cooldown").is_none());
+    }
+
+    #[test]
+    fn a_placement_starts_a_fifteen_second_cooldown() {
+        let host = TestHost::new();
+        let chitt = testing::chitt("chitt-1", "poster-1");
+        let reply = place(&chitt, "ada", 1, 1, 7);
+        assert_eq!(reply["type"], json!("placed"));
+        assert_eq!(reply["stamps"], json!([[0, 1]]));
+        assert_eq!(reply["wait"], json!(15));
+        assert_eq!(host.pushes().len(), 1);
+
+        host.advance(5);
+        let reply = place(&chitt, "ada", 2, 2, 7);
+        assert_eq!(reply, object(json!({ "type": "cooldown", "wait": 10 })));
+        // Someone else's cooldown is their own.
+        assert_eq!(place(&chitt, "bob", 2, 2, 8)["type"], json!("placed"));
+
+        host.begin_hook(HookClass::Render);
+        let state = render_state(&chitt, Some("ada"));
+        assert_eq!((state["canPlace"].clone(), state["cooldown"].clone()), (json!(true), json!(10)));
+
+        host.advance(10);
+        host.begin_hook(HookClass::Background);
+        assert_eq!(place(&chitt, "ada", 3, 3, 7)["type"], json!("placed"));
+    }
+
+    #[test]
+    fn only_admins_can_skip_the_cooldown_and_only_they_are_told_they_can() {
+        let host = TestHost::new();
+        let chitt = testing::chitt("chitt-1", "poster-1");
+        let admin = || placer("root").admin();
+        let place_as = |observer: chittr_cartridge::envelope::Observer, x: usize, skip: bool| {
+            let message = json!({ "type": "place", "x": x, "y": 0, "color": 3, "skipCooldown": skip });
+            let input = testing::canvas_message(&chitt, Some(observer), message, Some(1));
+            on_canvas_message(wire(input)).expect("the Hook returns").reply.unwrap()
+        };
+        for x in 0..3 {
+            let reply = place_as(admin(), x, true);
+            assert_eq!((reply["type"].clone(), reply["wait"].clone()), (json!("placed"), json!(0)));
         }
+        assert!(host.kv_value(&cooldown_key("root")).is_none());
+        // Switched off, an admin waits like everyone else.
+        assert_eq!(place_as(admin(), 3, false)["wait"], json!(15));
+        assert_eq!(place_as(admin(), 4, false)["type"], json!("cooldown"));
+
+        // Anyone else asking to skip is ignored.
+        assert_eq!(place_as(placer("ada"), 5, true)["wait"], json!(15));
+        assert_eq!(place_as(placer("ada"), 6, true)["type"], json!("cooldown"));
+
+        host.begin_hook(HookClass::Render);
+        let output = render(wire(testing::render(&chitt, Some(admin())))).unwrap();
+        assert_eq!(output.canvas.unwrap()["admin"], json!(true));
+        assert!(render_state(&chitt, Some("ada")).get("admin").is_none());
+        assert!(render_state(&chitt, None).get("admin").is_none());
+    }
+
+    #[test]
+    fn placing_a_pixel_its_own_color_changes_nothing_and_costs_no_cooldown() {
+        let host = TestHost::new();
+        let chitt = testing::chitt("chitt-1", "poster-1");
+        place(&chitt, "ada", 1, 1, 7);
+        assert_eq!(place(&chitt, "bob", 1, 1, 7)["type"], json!("unchanged"));
+        assert_eq!(host.pushes().len(), 1);
+        assert_eq!(place(&chitt, "bob", 2, 1, 7)["type"], json!("placed"));
+    }
+
+    #[test]
+    fn renders_send_the_newest_tiles_first() {
+        let host = TestHost::new();
+        let chitt = testing::chitt("chitt-1", "poster-1");
+        place(&chitt, "ada", 40, 1, 7);
+        place(&chitt, "bob", 2, 2, 8);
+        let mut keys = host.kv_keys();
+        keys.sort();
+        assert_eq!(
+            keys,
+            [
+                "place:cooldown:ada",
+                "place:cooldown:bob",
+                "place:stamp",
+                "place:tile:0",
+                "place:tile:1",
+                "place:who:0",
+                "place:who:1",
+            ]
+        );
+        host.begin_hook(HookClass::Render);
+        let state = render_state(&chitt, None);
+        assert_eq!(&stamps(&state)[..3], &[2, 1, 0]);
+        assert_eq!(state["tiles"][0][0], json!(0));
+        let pixels = decode_tile(&decode_base64(state["tiles"][0][1].as_str().unwrap())).unwrap();
+        assert_eq!(pixels[66], 8);
+    }
+
+    #[test]
+    fn a_tile_stamp_never_goes_backwards() {
+        let host = TestHost::new();
+        let chitt = testing::chitt("chitt-1", "poster-1");
+        host.put_kv(&tile_key(0), encode_stored_tile(&Tile { stamp: 9, pixels: vec![EMPTY; TILE_PIXELS] }), None)
+            .unwrap();
+        assert_eq!(place(&chitt, "ada", 0, 0, 1)["stamps"], json!([[0, 10]]));
+    }
+
+    #[test]
+    fn pixel_history_names_the_last_placer_and_forgets_placed_over_ones() {
+        let host = TestHost::new();
+        let chitt = testing::chitt("chitt-1", "poster-1");
+        place(&chitt, "ada", 1, 0, 1);
+        place(&chitt, "bob", 1, 0, 2);
+        let reply = send(&chitt, None, json!({ "type": "info", "x": 1, "y": 0 })).reply.unwrap();
+        assert_eq!((reply["name"].as_str(), reply["trolltag"].as_str()), (Some("bob"), Some("bob")));
+        let (_, placers) = decode_touches(&host.kv_value(&who_key(0)).unwrap()).unwrap();
+        assert_eq!(placers.len(), 1);
+    }
+
+    #[test]
+    fn a_busy_board_still_renders_and_the_rest_arrives_by_fetch() {
+        let host = TestHost::new();
+        let chitt = testing::chitt("chitt-1", "poster-1");
+        let noisy: Vec<u8> = (0..TILE_PIXELS).map(|index| (index % 3) as u8).collect();
+        for tile in 0..TILE_COUNT {
+            let stored = Tile { stamp: tile as u32 + 1, pixels: noisy.clone() };
+            host.put_kv(&tile_key(tile), encode_stored_tile(&stored), None).unwrap();
+        }
+        host.begin_hook(HookClass::Render);
+        let state = render_state(&chitt, Some("ada"));
+        assert!(serde_json::to_vec(&state).unwrap().len() < 15 * 1024);
+        let inline = state["tiles"].as_array().unwrap();
+        assert!(!inline.is_empty() && inline.len() < TILE_COUNT);
+        assert_eq!(inline[0][0], json!(TILE_COUNT - 1));
+
+        host.begin_hook(HookClass::Background);
+        let ids: Vec<usize> = (0..MAX_FETCH).collect();
+        let reply = send(&chitt, None, json!({ "type": "tiles", "ids": ids })).reply.unwrap();
+        assert!(serde_json::to_vec(&reply).unwrap().len() < 4 * 1024);
+        let tiles = reply["tiles"].as_array().unwrap();
+        assert!(!tiles.is_empty());
+        assert_eq!(tiles[0][1], json!(1));
+        assert_eq!(decode_tile(&decode_base64(tiles[0][2].as_str().unwrap())).unwrap(), noisy);
+
+        let output = send(&chitt, None, json!({ "type": "tiles", "ids": [256] }));
+        assert_eq!(output.error.unwrap().code, "bad_tiles");
     }
 }

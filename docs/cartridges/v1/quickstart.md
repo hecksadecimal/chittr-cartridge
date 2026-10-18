@@ -89,7 +89,7 @@ strip = true
 ```
 
 drawing on a Canvas Guest goes through the SDK's command-buffer encoder, `Canvas2D`. the starter in `canvas/src/lib.rs`
-shows it. call `Canvas2D::submit` to send each frame, and read `examples/poll/canvas/src/lib.rs` for a full example. the host
+shows it. call `Canvas2D::submit` to send each frame, and read `examples/snake/canvas/src/lib.rs` for a full example. the host
 functions (`request_frame`, `set_fps`, `send`, `load_image`, `load_sound`, `play_sound`) come from the generated bindings in
 `src/pdk.rs`.
 

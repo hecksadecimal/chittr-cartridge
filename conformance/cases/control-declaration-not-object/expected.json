@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "manifest.json: Control \"vote\" must be { \"value\": ... } or { \"fields\": ... }"
+  "error": "manifest.json: Control \"vote\" must be an object with \"value\" or \"fields\", and optional \"audience\" and \"confirm\""
 }

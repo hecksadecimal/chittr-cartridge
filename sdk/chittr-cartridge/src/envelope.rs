@@ -33,16 +33,32 @@ pub struct Observer {
     pub is_poster: bool,
     pub is_poster_user: bool,
     pub is_admin: bool,
+    pub is_suspended: bool,
     #[serde(flatten)]
     pub profile: serde_json::Map<String, serde_json::Value>,
 }
 
-/// Input to `init`, which runs once at publish. It has no `observer` key.
+/// Input to `init`, which runs once at publish. It has no `observer` key. In ABI v2 it also carries the effective
+/// capabilities and resource limits; a v1 host omits both, so they default empty.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InitInput {
     pub v: u32,
     pub hook: String,
     pub chitt: ChittRef,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capabilities: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limits: Option<ServerLimits>,
+}
+
+/// The effective v2 resource limits for a Server Guest. Read them rather than hard-coding the defaults.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerLimits {
+    pub max_file_bytes: u64,
+    pub max_file_read_bytes: u64,
+    pub max_file_handles: u32,
+    pub max_pickers: u32,
 }
 
 /// Output of `init`. `content` becomes the Chitt's raw content; publishing is refused without it.
@@ -173,6 +189,9 @@ pub struct ControlInput {
     pub chitt: ChittRef,
     #[serde(default)]
     pub observer: Option<Observer>,
+    /// The render surface the Control was used on, `card` or `config` (ABI v2, host-set). A v1 host omits it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface: Option<String>,
     pub control: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
@@ -209,6 +228,75 @@ pub struct CanvasMessageOutput {
     pub reply: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub rerender: bool,
+}
+
+/// Metadata for a file a picker delivered (ABI v2). `id` is an opaque, scoped handle; the bytes never travel in an
+/// envelope. `filename` and `mime_type` are display hints, never validation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileRef {
+    pub id: String,
+    pub filename: String,
+    pub mime_type: String,
+    pub size: u64,
+}
+
+/// Input to `on_file`, a server-routed file from an authorized picker (ABI v2). The handle is scoped to this call
+/// and revoked when the Hook settles. `surface` is `card` or `config`, host-set.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileInput {
+    pub v: u32,
+    pub hook: String,
+    pub chitt: ChittRef,
+    #[serde(default)]
+    pub observer: Option<Observer>,
+    pub surface: String,
+    pub name: String,
+    pub file: FileRef,
+}
+
+/// Output of `on_file`: `{}`, or `rerender` to draw the sender's card again through `render`. There is no reply.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileOutput {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub rerender: bool,
+}
+
+/// The host's authorization context for a configuration render or action (ABI v2). Host-computed; a guest cannot set
+/// it or widen it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigAccess {
+    /// The strictest audience the configuration declarations require: `owner`, `admin` or `owner_or_admin`.
+    pub audience: String,
+    pub is_owner: bool,
+    pub is_admin: bool,
+    /// The host's final decision for this request. False means the configuration must not run.
+    pub can_configure: bool,
+}
+
+/// Input to `render_config`, run only for an authorized owner or admin opening the configuration panel (ABI v2).
+/// `surface` is always `config`, and `access` is host-computed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderConfigInput {
+    pub v: u32,
+    pub hook: String,
+    pub chitt: ChittRef,
+    #[serde(default)]
+    pub observer: Option<Observer>,
+    pub surface: String,
+    pub access: ConfigAccess,
+}
+
+/// Output of `render_config`: the data `config.liquid` draws with. The template name is fixed and there is no canvas
+/// state.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct RenderConfigOutput {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<serde_json::Value>,
 }
 
 /// Input to `on_reply`, a gate: the reply about to be posted. It has no id yet, because the gate runs
@@ -311,6 +399,13 @@ impl From<crate::poster::PosterError> for HookError {
 /// A failed `asset` call becomes the Hook's own failure, as `From<KvError>` does.
 impl From<crate::host::AssetError> for HookError {
     fn from(error: crate::host::AssetError) -> Self {
+        Self::new(error.code, error.message)
+    }
+}
+
+/// A failed `file_read` or `file_close` call becomes the Hook's own failure (ABI v2).
+impl From<crate::host::FileError> for HookError {
+    fn from(error: crate::host::FileError) -> Self {
         Self::new(error.code, error.message)
     }
 }

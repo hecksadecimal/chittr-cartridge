@@ -267,7 +267,7 @@ across all Chitts in any 60 seconds. past either, the use gets the "slow down" a
 
 a Canvas Guest runs in the viewer's browser. it draws with a `Canvas2D`-like context over a binary command buffer, and it
 talks to the Server Guest only through messages. enable the `canvas` feature and call `Canvas2D::submit` once per frame.
-the poll's `canvas/src/lib.rs` and the snake example are the full references. the pieces:
+the snake example's `canvas/src/lib.rs` is a full reference. the pieces:
 
 - the Canvas Guest exports `start` (required), `frame` (required) and `event` (optional). `frame` runs only after the guest
   called `request_frame`, and never faster than the effective rate, which is at most 60 frames a second and 15 under
