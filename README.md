@@ -1,5 +1,6 @@
 # chittr-cartridge
 
+```text
 -----BEGIN PGP SIGNED MESSAGE-----
 Hash: SHA512
 
@@ -9,9 +10,13 @@ docs, the examples. poke around c;
 
 iQEzBAEBCgAdFiEEc2hpdHR5IGZha2Ugc2lnbmF0dXJlIGJ1dCBpdHMgdmliZXM=
 -----END PGP SIGNATURE-----
+```
 
-everything u need to build a cartridge for Chittr with rust alone: the rust sdk, the v1 abi docs and schemas, a cli to
-make and check them, and runnable examples. no node, no fuss.
+everything u need to build a cartridge for Chittr. rust is the main road, and it needs no node: the rust sdk, the abi
+docs and schemas, a cli to make and check them, and runnable examples. the repo also vendors an offline xtp generator
+that renders bindings and a project scaffold for cpp, csharp, go, python, rust, typescript or zig. that step runs on
+node; building what it writes needs that language's own toolchain. the rust starter is still the one that arrives ready
+to check and pack c;
 
 ## What a Cartridge is
 
@@ -46,11 +51,14 @@ viewer, or none when logged out), so each viewer can get their own card.
    cargo install --git https://github.com/hecksadecimal/chittr-cartridge chittr-cartridge --locked
    ```
 
-3. Optional: install the XTP CLI (`xtp`) as its documentation describes. it generates the Rust bindings from the schemas
-   in `docs/cartridges/v1/`. the CLI's `sync` command copies those bindings into a project, pruned. the examples already
-   have their generated bindings, so u only need `xtp` to change a schema.
+3. Optional: for bindings or a project scaffold in a language other than rust, use the vendored generator in
+   [`tools/xtp/`](https://github.com/hecksadecimal/chittr-cartridge/tree/main/tools/xtp) (it lives in the repository; the
+   release zip carries the CLI, docs and examples). it runs offline on Node and renders from any of the schemas, with no
+   `xtp` install. the examples already carry their generated rust bindings, so u only need it to change a schema or scaffold
+   another language. the rust path above still needs no Node.js; this step does. see
+   [Scaffold another language](#scaffold-another-language) for the commands and each backend's toolchain.
 
-no Node.js needed.
+no `xtp` install is needed for the rust starter or the examples.
 
 ### Install from a release zip
 
@@ -74,6 +82,9 @@ the SDK, and the examples' sources, so the examples build from the unzipped fold
 
 ## Start a Cartridge
 
+`chittr-cartridge new` is the rust starter: it writes the SDK crate, `src/pdk.rs`, `cartridge/manifest.json`, the card
+template and `build.sh`, all wired up. pass `--canvas` for a Canvas Guest, or `--abi 2` for the draft v2 bindings.
+
 ```bash
 chittr-cartridge new my-cartridge            # or: new my-cartridge --canvas, for a Canvas Guest too
 cd my-cartridge && ./build.sh && chittr-cartridge check cartridge
@@ -81,6 +92,65 @@ cd my-cartridge && ./build.sh && chittr-cartridge check cartridge
 
 the new project builds and checks with no edits. [`docs/cartridges/v1/quickstart.md`](docs/cartridges/v1/quickstart.md)
 walks u thru it.
+
+if u want a guest in another language, the next section is for u.
+
+## Scaffold another language
+
+the vendored generator in [`tools/xtp/`](https://github.com/hecksadecimal/chittr-cartridge/tree/main/tools/xtp) renders
+the xtp bindgen templates from a schema. it is the offline, Node-only runner: the backend bundles and their dependencies
+are committed under `tools/xtp/dist/`, so there is no `npm install` and no network at use time. run it from the cartridge
+repo root:
+
+```bash
+node tools/xtp/bin/xtp-gen.mjs --schema docs/cartridges/v1/server.xtp.yaml --lang rust --out /tmp/server-scaffold --name myplugin
+```
+
+swap `--lang` for any of the seven backends:
+
+```bash
+node tools/xtp/bin/xtp-gen.mjs --schema docs/cartridges/v1/server.xtp.yaml --lang cpp        --out /tmp/server-cpp --name myplugin
+node tools/xtp/bin/xtp-gen.mjs --schema docs/cartridges/v1/server.xtp.yaml --lang csharp     --out /tmp/server-csharp --name myplugin
+node tools/xtp/bin/xtp-gen.mjs --schema docs/cartridges/v1/server.xtp.yaml --lang go         --out /tmp/server-go --name myplugin
+node tools/xtp/bin/xtp-gen.mjs --schema docs/cartridges/v1/server.xtp.yaml --lang python     --out /tmp/server-python --name myplugin
+node tools/xtp/bin/xtp-gen.mjs --schema docs/cartridges/v1/server.xtp.yaml --lang rust       --out /tmp/server-rust --name myplugin
+node tools/xtp/bin/xtp-gen.mjs --schema docs/cartridges/v1/server.xtp.yaml --lang typescript --out /tmp/server-typescript --name myplugin
+node tools/xtp/bin/xtp-gen.mjs --schema docs/cartridges/v1/server.xtp.yaml --lang zig        --out /tmp/server-zig --name myplugin
+```
+
+for a Canvas Guest, point `--schema` at `docs/cartridges/v1/canvas.xtp.yaml` and use a separate `--out`, like
+`/tmp/canvas-scaffold`. v2 works the same way with `docs/cartridges/v2/server.xtp.yaml` or
+`docs/cartridges/v2/canvas.xtp.yaml`. `--description`, `--app-id` and `--extension-point-id` are optional; they fill the
+project fields each backend's templates use.
+
+what u get is a project scaffold and bindings, not a packed Cartridge. `xtp-gen` writes the backend's source templates,
+`xtp.toml` and generated binding files; it does not write `manifest.json`, a Liquid template, assets, or a `.cartridge`.
+`chittr-cartridge new` is the only starter that writes those pieces. to use a generated scaffold, add the Cartridge files,
+build the wasm, and run `chittr-cartridge check` / `pack` yourself.
+
+for a rust Cartridge, the usual loop is `xtp-gen` and then `chittr-cartridge sync /tmp/server-scaffold .`; `sync` copies
+only `src/pdk.rs`, pruned to the Hooks ur `src/lib.rs` defines. `scripts/gen-bindings.sh` runs the same render, format and
+prune pass for the committed templates.
+
+the catalog is the seven backends above. the repo's SDK, examples, CI and the CLI's `new` / `sync` path are rust; the
+other scaffolds are generated from the schema but are not wired into a Chittr example. a Canvas Guest in another language
+also needs a port of the command-buffer encoder (see `docs/cartridges/v1/design.md`), not just the host-function bindings.
+
+each backend's template wants its own toolchain. the generator only needs Node; building the generated project needs the
+rest:
+
+| `--lang` | what the generated project expects |
+| --- | --- |
+| `cpp` | `make`, `curl` and a C++23 WASI SDK; the generated `Makefile` downloads a WASI SDK when `WASI_SDK_PATH` is unset, and fetches its C++ headers on first build. |
+| `csharp` | .NET SDK 8 with the `wasi-experimental` workload, a WASI SDK in `WASI_SDK_PATH`, and PowerShell for `prepare.ps1`. |
+| `go` | Go 1.20–1.24, TinyGo 0.34.0 or newer, and `goimports`; `prepare.sh` runs `go install` for `goimports`. |
+| `python` | Python 3.13, `uv` and `extism-py`; `prepare.sh` downloads `extism.pyi`. |
+| `rust` | Rust and rustup; `prepare.sh` adds `wasm32-wasip1` and `wasm32-unknown-unknown`. |
+| `typescript` | Node.js, npm and `extism-js`; `prepare.sh` runs `npm install`. |
+| `zig` | Zig; `zig build` fetches the pinned dependencies from `build.zig.zon`. |
+
+the prepare and build scripts are the backend templates' own, so they may use the network for their dependencies. the
+generator itself does not.
 
 ## Build the examples
 
@@ -102,21 +172,26 @@ the examples:
 | Example | What it shows |
 | --- | --- |
 | `examples/hello` | The smallest Server Guest: `init` and `render`, no Canvas Guest. |
-| `examples/doom` | The original DOOM engine's first episode, with keyboard input, fullscreen and silent audio. Optional local WAD and WASI SDK build; an asset-free scaffold otherwise. |
+| `examples/doom` | The original Linux DOOM 1.10 engine, with keyboard and pointer-locked mouse input, software rendering, fullscreen, PCM sound effects and OPL music through ABI v2 `audio.pcm` (48 kHz stereo s16le; the host speaker starts muted). Viewers pick a base WAD and mods; Freedoom Phase 1/2 can be bundled as BSD-3 assets, and no proprietary game data ships. Optional WASI SDK build; an asset-free scaffold otherwise. |
 | `examples/poll` | An admin-configured poll with a waiting state, transparent Canvas Guest answer buttons, a gate on replies, and a timer that announces the result. The reference for scaffolding, and for testing Hooks with `cargo test`. |
 | `examples/snake` | A playable Snake game in a Canvas Guest, with a leaderboard in the Server Guest. |
 | `examples/hurtle` | A Wordle-style Canvas game that requests a 15-minute suspension after six failed guesses, through the poster's permission-checked admin action. |
 | `examples/paint` | Place: an r/place-style shared pixel board with a cooldown, stamped KV tiles, paced tile loading and fullscreen. |
 | `examples/breakout` | A 32×32 square-brick Breakout Canvas Guest with power-ups, particles, fullscreen, a KV-backed level editor (any brick colour) for the poster, and daily and all-time top-five leaderboards. |
 
+`examples/doom` is the one to look at for audio: the Canvas Guest decodes the selected WADs' 8-bit DMX `DS*` lumps,
+mixes up to 16 SFX voices, adds the OPL music rendered from the `D_*` MUS lumps, and writes bounded 48 kHz stereo s16le
+chunks through `audio_write` (`audio.pcm`). the host's shared speaker starts muted, and the host owns unmute, pause and
+visibility. the cartridge requires `audio.pcm` and `input.relative-pointer`; WAD data keeps its own license.
+
 ## The CLI
 
 ```
-chittr-cartridge new <name> [--canvas] [--sdk-path DIR]   create a Cartridge project
+chittr-cartridge new <name> [--canvas] [--abi 1|2] [--sdk-path DIR]   create a Rust Cartridge project
 chittr-cartridge check <dir|file.cartridge>               validate with the server's rules
 chittr-cartridge pack <dir> [out]                         pack and validate a .cartridge
 chittr-cartridge watch <dir>                              repack and check on every save (no upload)
-chittr-cartridge sync <scaffold-dir> <project>            copy xtp's bindings in, pruned to the Hooks you define
+chittr-cartridge sync <scaffold-dir> <project>            copy a scaffold's bindings in, pruned to the Hooks you define
 ```
 
 `check` prints `file: rule` for each rule the archive breaks, and exits 1. `pack` writes `<project>/<project>.cartridge` when
@@ -184,7 +259,9 @@ conformance corpus), every example built to wasm, the poll's Hook tests, and `ch
 
 ## Documentation
 
-- [`docs/cartridges/v2/proposal.md`](docs/cartridges/v2/proposal.md): draft ABI v2 proposal for template-owned file pickers, scoped binary reads, efficient framebuffers, capabilities, an optional owner/admin `config.liquid` surface, and sandbox-preserving extensions; not implemented.
+- [`docs/cartridges/v2/abi.md`](docs/cartridges/v2/abi.md): the v2 contract, draft for review and not yet released: file pickers, scoped binary reads, native framebuffers, capabilities, `config.liquid`, relative pointer input and `audio.pcm`. the CLI can scaffold it with `--abi 2`.
+- [`docs/cartridges/v2/design.md`](docs/cartridges/v2/design.md): why v2 is shaped the way it is.
+- [`docs/cartridges/v2/proposal.md`](docs/cartridges/v2/proposal.md): the original v2 proposal and the reasoning behind it.
 - [`docs/cartridges/v1/quickstart.md`](docs/cartridges/v1/quickstart.md): from an empty folder to a packed Cartridge.
 - [`docs/cartridges/v1/guide.md`](docs/cartridges/v1/guide.md): the SDK, piece by piece, and how to test Hooks natively.
 - [`docs/cartridges/v1/limits.md`](docs/cartridges/v1/limits.md): every limit an author runs into, with its number.
@@ -192,7 +269,9 @@ conformance corpus), every example built to wasm, the poll's Hook tests, and `ch
 - [`docs/cartridges/v1/abi.md`](docs/cartridges/v1/abi.md): the ABI, with every export, host function, draw op and limit.
 - [`docs/cartridges/v1/design.md`](docs/cartridges/v1/design.md): why the ABI is shaped the way it is.
 - [`docs/cartridges/v1/server.xtp.yaml`](docs/cartridges/v1/server.xtp.yaml) and
-  [`docs/cartridges/v1/canvas.xtp.yaml`](docs/cartridges/v1/canvas.xtp.yaml): the schemas the ABI is defined by.
+  [`docs/cartridges/v1/canvas.xtp.yaml`](docs/cartridges/v1/canvas.xtp.yaml): the v1 schemas the ABI is defined by. the v2
+  schemas are [`docs/cartridges/v2/server.xtp.yaml`](docs/cartridges/v2/server.xtp.yaml) and
+  [`docs/cartridges/v2/canvas.xtp.yaml`](docs/cartridges/v2/canvas.xtp.yaml).
 
 ## Layout
 
@@ -202,13 +281,17 @@ conformance/                  the conformance corpus the CLI's validator is test
 sdk/chittr-cartridge          the guest SDK (Server Guests, Canvas Guests with the `canvas` feature, and the `testing` feature)
 sdk/chittr-cartridge-macros   the #[hook] attribute
 docs/cartridges/v1            the ABI, quickstart, guide, limits, cookbook, design notes and schemas
+docs/cartridges/v2            the draft v2 ABI, design notes, proposal and schemas
 examples/                     hello, poll, snake, hurtle, paint, breakout and doom
 scripts/build-examples.sh     builds every example to wasm
 scripts/package-release.sh    packages one release zip of the CLI
+tools/xtp/                    vendored xtp backends and the offline Node generator
 .github/workflows             the CI and release workflows
 ```
 
 ## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT), at your option.
-The DOOM port in `examples/doom` is GPL-2.0; see its README and `engine/LICENSE.TXT`. WAD game data has separate licensing and is not included in the repository.
+The DOOM port in `examples/doom` is GPL-2.0; its vendored Chocolate Doom music code is GPL-2.0, and the Nuked OPL3
+emulator is LGPL-2.1. see its README and `engine/LICENSE.TXT`. Freedoom assets, when u pack them, are BSD-3-Clause. WAD
+game data has separate licensing; no proprietary Doom data is included in the repository.

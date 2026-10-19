@@ -81,10 +81,13 @@ Extism globals in Node and calls `render()` once per template file.
 
 ## Known upstream limitations
 
-- **TypeScript** rejects `format: int64` by design (the pinned backend throws
-  `We do not support format int64 yet`). schemas that use int64 (both
-  `docs/cartridges/v1` and `v2`) therefore do not scaffold for TypeScript; every
-  other language renders clean.
+- **TypeScript `format: int64`.** the pinned upstream backend throws
+  `We do not support format int64 yet`, but the vendored copy is patched (see
+  `PROVENANCE.md`, adaptation 3): `int64` maps to `number`, the same as `int32`,
+  because every `int64` field in the Chittr schemas is a safe JSON integer
+  (within 2^53), as `PROVENANCE.md` and the schema descriptions note. no schema
+  change or ABI encoding change is needed, and the v1 and v2 server and canvas
+  schemas scaffold for TypeScript. all seven backends render clean.
 
 ## Regenerating the committed Rust bindings
 

@@ -1,7 +1,7 @@
 {
   "v": 2,
   "name": "DOOM engine",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "capabilities": {
     "server": { "require": ["files.server"] },
     "canvas": {
