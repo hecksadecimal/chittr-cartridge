@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "templates/card.liquid: <lc-badge> and <lc-badge-tooltip> are only allowed when \"v\" is 2"
+}

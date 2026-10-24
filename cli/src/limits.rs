@@ -16,6 +16,8 @@ pub struct Limits {
     pub template_files: u64,
     pub template_bytes: u64,
     pub manifest_bytes: u64,
+    /// `style.css`, before the host compiles it.
+    pub stylesheet_bytes: u64,
 }
 
 impl Default for Limits {
@@ -29,6 +31,7 @@ impl Default for Limits {
             template_files: 64,
             template_bytes: 256 * KIB,
             manifest_bytes: 16 * KIB,
+            stylesheet_bytes: 64 * KIB,
         }
     }
 }
@@ -50,6 +53,7 @@ impl Limits {
                 "templateFiles" => self.template_files = n,
                 "templateBytes" => self.template_bytes = n,
                 "manifestBytes" => self.manifest_bytes = n,
+                "stylesheetBytes" => self.stylesheet_bytes = n,
                 other => return Err(format!("unknown limit {other}")),
             }
         }

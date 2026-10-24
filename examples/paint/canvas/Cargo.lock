@@ -52,6 +52,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 name = "chittr-cartridge-sdk"
 version = "1.0.0"
 dependencies = [
+ "base64 0.22.1",
  "extism-pdk",
  "serde",
  "serde_json",

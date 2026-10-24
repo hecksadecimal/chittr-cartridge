@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "error": "style.css: is 11 bytes; the limit is 10",
+  "limits": {
+    "stylesheetBytes": 10
+  }
+}

@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "src/: is not an allowed location; Cartridges may contain only manifest.json, server.wasm, canvas.wasm, templates/*.liquid and assets/**"
+  "error": "src/: is not an allowed location; Cartridges may contain only manifest.json, server.wasm, canvas.wasm, style.css, templates/*.liquid and assets/**"
 }

@@ -80,6 +80,9 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
                     for warning in &cartridge.warnings {
                         eprintln!("warning: {warning}");
                     }
+                    if cartridge.stylesheet.is_some() {
+                        eprintln!("note: {}", validate::STYLESHEET_NOTE);
+                    }
                     Ok(ExitCode::SUCCESS)
                 }
                 Err(error) => {
@@ -136,6 +139,9 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
                     for warning in &cartridge.warnings {
                         eprintln!("warning: {warning}");
                     }
+                    if cartridge.stylesheet.is_some() {
+                        eprintln!("note: {}", validate::STYLESHEET_NOTE);
+                    }
                     Ok(ExitCode::SUCCESS)
                 }
                 Err(error) => {
@@ -149,11 +155,16 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
 
 fn summary(cartridge: &validate::Cartridge) -> String {
     format!(
-        "ok: {} {} (hooks: {}; canvas: {}; templates: {}; assets: {})",
+        "ok: {} {} (hooks: {}; canvas: {}; stylesheet: {}; templates: {}; assets: {})",
         cartridge.manifest.name,
         cartridge.manifest.version,
         cartridge.hooks.join(", "),
         if cartridge.canvas_wasm.is_some() {
+            "yes"
+        } else {
+            "no"
+        },
+        if cartridge.stylesheet.is_some() {
             "yes"
         } else {
             "no"

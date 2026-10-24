@@ -429,3 +429,6 @@ is not loaded yet, or for a handle that was never loaded.
 
 - **v1**: the exports, host functions, command buffer and draw-op table above. An addition within v1 (a new opcode, event,
   host function or Hook) keeps `v: 1`. A change to an existing byte or shape needs a new `v`.
+- **v1 addition**: an optional `style.css` at the archive root and the `class` attribute in templates (see
+  [Stylesheets and badges](stylesheets.md)). `class` used to be stripped, so a class already in an older template now
+  picks up the site's CSS inside its card. Nothing else about an archive without `style.css` changes.

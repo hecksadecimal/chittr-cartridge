@@ -1,0 +1,11 @@
+{
+  "v": 2,
+  "name": "Schism Tracker engine",
+  "version": "0.1.0",
+  "capabilities": {
+    "canvas": {
+      "require": ["files.client", "audio.pcm"],
+      "optional": ["framebuffer.indexed8", "framebuffer.rgba8"]
+    }
+  }
+}

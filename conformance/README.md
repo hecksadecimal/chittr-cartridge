@@ -49,24 +49,25 @@ a case has exactly one of `files/` or `archive.zip`:
   WebAssembly compile error, a LiquidJS parse error). those messages differ between engines, and the part that matters is the
   file and the rule's first words.
 - `limits` is optional. each key overrides one of the validator's limits, using the server's limit names: `archiveBytes`,
-  `inflatedBytes`, `assetBytes`, `wasmBytes`, `files`, `templateFiles`, `templateBytes`, `manifestBytes`. a limit gets lowered
+  `inflatedBytes`, `assetBytes`, `wasmBytes`, `files`, `templateFiles`, `templateBytes`, `manifestBytes`, `stylesheetBytes`. a limit gets lowered
   so its rule can be hit with a small archive. every other limit keeps its default.
 
 ## Defaults
 
 the validator's limits are the server's: 32 MiB archive, 64 MiB inflated, 16 MiB per asset, 4 MiB per wasm, 1000 files, 64
-templates, 256 KiB of templates, 16 KiB of manifest. a canvas guest declares at most 1024 pages of memory (64 MiB).
+templates, 256 KiB of templates, 16 KiB of manifest, 64 KiB of `style.css`. a canvas guest declares at most 1024 pages of memory (64 MiB).
 
 ## What the cases cover
 
-- layout: the allowed root files, `templates/*.liquid`, `assets/**`, and the directory entries;
+- layout: the allowed root files (`style.css` among them), `templates/*.liquid`, `assets/**`, and the directory entries;
 - archive: paths, duplicates, encryption, compression methods, ZIP64, a corrupt central directory, corrupt local headers, data
   that runs past the end, stored sizes, understated and overstated deflate sizes, and a zip bomb;
-- limits: archive, file count, inflated total, manifest, wasm, asset, template count and template bytes, and the template name
-  length;
+- limits: archive, file count, inflated total, manifest, wasm, asset, template count and template bytes, `style.css`, and the
+  template name length;
 - manifest: JSON shape, unknown keys, `v`, `name` and `version`, `fonts`;
 - controls: declarations, enums, fields, and template use of undeclared or dynamic Control names;
-- templates: UTF-8, LiquidJS parse, and the canvas placement rules;
+- templates: UTF-8, LiquidJS parse, the canvas placement rules, and the v2-only badge elements;
+- stylesheet: `style.css`'s UTF-8. its CSS rules and the Tailwind compile run on the host, not in the validator;
 - server exports: the Hooks, `render`, and the rule against other exports;
 - canvas exports: `start`, `frame`, optional `event`, `memory`, and the memory cap for both declared and imported memory.
 

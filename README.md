@@ -31,7 +31,8 @@ a cartridge is the code and content behind a chitt. it has up to two parts, both
 
 alongside the guests, a cartridge has a `manifest.json` (its name, fonts and Controls), a card template written in Liquid
 (the `templates/` folder) that places the **Host Parts** the host owns, like the author header and the reply and reaction
-bars, and any `assets/` the guests load.
+bars, any `assets/` the guests load, and optionally a `style.css` for the card, with Tailwind classes that only reach ur
+own card.
 
 a Server Guest's `render` returns the data for the card, and the template draws it. `render` gets the **Observer** (the
 viewer, or none when logged out), so each viewer can get their own card.
@@ -265,6 +266,7 @@ conformance corpus), every example built to wasm, the poll's Hook tests, and `ch
 - [`docs/cartridges/v1/quickstart.md`](docs/cartridges/v1/quickstart.md): from an empty folder to a packed Cartridge.
 - [`docs/cartridges/v1/guide.md`](docs/cartridges/v1/guide.md): the SDK, piece by piece, and how to test Hooks natively.
 - [`docs/cartridges/v1/limits.md`](docs/cartridges/v1/limits.md): every limit an author runs into, with its number.
+- [`docs/cartridges/v1/stylesheets.md`](docs/cartridges/v1/stylesheets.md): `style.css`, Tailwind classes, what `url()` can point at, and the v2 badge elements.
 - [`docs/cartridges/v1/cookbook.md`](docs/cartridges/v1/cookbook.md): recipes for polls, counters, timers, canvas games and testing on Chittr.
 - [`docs/cartridges/v1/abi.md`](docs/cartridges/v1/abi.md): the ABI, with every export, host function, draw op and limit.
 - [`docs/cartridges/v1/design.md`](docs/cartridges/v1/design.md): why the ABI is shaped the way it is.

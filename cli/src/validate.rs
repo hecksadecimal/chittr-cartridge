@@ -2,6 +2,9 @@
 //! first rule the archive breaks.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::LazyLock;
+
+use regex::Regex;
 
 use crate::archive;
 use crate::controls::ControlDeclarations;
@@ -18,6 +21,9 @@ pub struct Cartridge {
     pub canvas_wasm: Option<Vec<u8>>,
     /// Template name (without `templates/` and `.liquid`) and its source, in archive order.
     pub templates: Vec<(String, String)>,
+    /// `style.css`'s source, when the Cartridge has one. Only its size and UTF-8 are checked here: the host checks its
+    /// rules and compiles it with Tailwind at upload, which the Cartridge Simulator runs too.
+    pub stylesheet: Option<String>,
     /// Asset paths relative to `assets/`.
     pub assets: Vec<String>,
     /// The Hooks the Server Guest exports, in export order.
@@ -28,6 +34,12 @@ pub struct Cartridge {
 
 /// The warning for a Server Guest with no `init` Hook. Publishing needs one: Chittr calls `init` to get the Chitt's text.
 pub const NO_INIT_WARNING: &str = "server.wasm: no init Hook — Chittr refuses to publish without one (it supplies the Chitt's text)";
+
+/// The note for a Cartridge with a stylesheet. Its url() and at-rule checks and the Tailwind compile run on the host.
+pub const STYLESHEET_NOTE: &str = "style.css: checked for size and UTF-8 only; Chittr checks its rules and compiles it with Tailwind at upload, and the Cartridge Simulator shows those errors first";
+
+static LC_BADGE_TAG: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)<lc-badge(?:-tooltip)?[\s/>]").expect("valid regex"));
 
 /// Validates a `.cartridge` archive with the server's default limits.
 pub fn validate(bytes: &[u8]) -> Result<Cartridge> {
@@ -75,6 +87,14 @@ pub fn validate_with(bytes: &[u8], limits: &Limits) -> Result<Cartridge> {
     }
 
     let templates = parse_templates(&plan.templates, &contents, &manifest.controls, manifest.abi)?;
+    let stylesheet = match contents.get(archive::STYLESHEET_PATH) {
+        Some(bytes) => Some(
+            std::str::from_utf8(bytes)
+                .map_err(|_| CartridgeError::new(archive::STYLESHEET_PATH, "is not valid UTF-8"))?
+                .to_string(),
+        ),
+        None => None,
+    };
     check_canvas_placement(&templates, canvas_wasm.is_some())?;
 
     let assets = plan
@@ -87,6 +107,7 @@ pub fn validate_with(bytes: &[u8], limits: &Limits) -> Result<Cartridge> {
         server_wasm: server_wasm.to_vec(),
         canvas_wasm: canvas_wasm.cloned(),
         templates,
+        stylesheet,
         assets,
         hooks,
         warnings,
@@ -123,6 +144,12 @@ fn parse_templates(
             }
             if source.contains("<lc-file") {
                 return fail(file.as_str(), r#"<lc-file> is only allowed when "v" is 2"#);
+            }
+            if LC_BADGE_TAG.is_match(source) {
+                return fail(
+                    file.as_str(),
+                    r#"<lc-badge> and <lc-badge-tooltip> are only allowed when "v" is 2"#,
+                );
             }
         }
         templates::parse(&file, source)?;

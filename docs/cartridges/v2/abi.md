@@ -728,6 +728,7 @@ than hard-coding them. A capability's host functions are usable only when the ca
 | Server upload body | 16 MiB, before multipart parsing | refused; no guest runs |
 | Server upload admission | one per card in the UI, plus server-side per-viewer and per-IP limits | refused |
 | Config render | render class, 500 ms, the render output cap | as `render` |
+| Distinct badges per card (`<lc-badge>`, `<lc-badge-tooltip>`) | 32 | further distinct ids draw nothing |
 
 v1's 32 MiB Server Guest and 64 MiB Canvas Guest memory caps, deadline classes and small ordinary-message/state caps stay as
 the baseline. The new host-held resources have their own aggregate caps, so moving bytes out of wasm does not become an
@@ -739,8 +740,40 @@ guest reads them rather than hard-coding them.
 - **v1**: the original exports, host functions, command buffer and draw-op table. Unchanged, and still valid on a v2 host.
 - **v2**: adds `on_file` and `render_config` Hooks; `file_read` and `file_close`; the `file` canvas event and `<lc-file>`
   Host Part; draw ops 0x52 `blitRgbaScaled` and 0x53 `blitIndexedScaled`; the capability manifest and its discovery on
-  `init`/`start`; the `surface` field on `on_control`; and the optional `templates/config.liquid` surface. The shipped
+  `init`/`start`; the `surface` field on `on_control`; the optional `templates/config.liquid` surface; and the
+  `<lc-badge>` and `<lc-badge-tooltip>` Host Parts (section 11). The shipped
   capability additions are `input.relative-pointer` (the `relative` pointer event and `input_reset`) and `audio.pcm`
   (`audio_write` and `audio_stop`); both keep `v: 2`. It incorporates
   every v1 export, host function, draw op, envelope, limit and deadline unchanged. An addition within v2 (a new opcode,
   event, host function, Hook or capability) keeps `v: 2`. A change to an existing byte or shape needs a new `v`.
+
+## 11. Badge Host Parts
+
+Two Host Parts draw a Chittr badge by its id. Both are v2 only: a `v: 1` template that contains either is refused with
+`templates/{name}.liquid: <lc-badge> and <lc-badge-tooltip> are only allowed when "v" is 2`. The stylesheet (`style.css`)
+and the `class` attribute are not v2 only; they are covered, with these elements, in
+[Stylesheets and badges](../v1/stylesheets.md).
+
+```html
+<button type="button" data-lc-control="cheer" data-lc-value="go"><lc-badge id="founder" width="16" height="16"></lc-badge> Cheer</button>
+<p>Earned: <lc-badge-tooltip id="founder"></lc-badge-tooltip></p>
+```
+
+| Element | Draws | May sit inside a `<button>` |
+| --- | --- | --- |
+| `<lc-badge>` | a plain `<img>` of the badge | yes; a click goes to the enclosing element |
+| `<lc-badge-tooltip>` | the badge as profiles draw it, with a tooltip showing its name and description | no; the tooltip trigger is interactive |
+
+Both elements:
+
+- require `id`, matching `^[A-Za-z0-9_-]{1,64}$`. An element without a valid id is dropped. The id may come from Liquid
+  output, so it is not checked at upload.
+- keep `alt`, `width`, `height`, `class`, `title`, `aria-label`, `dir`, `lang` and an inline `style`, cleaned as an
+  `<img>`'s are. Other attributes are dropped.
+- are leaves: their children are dropped.
+- default `alt` and `title` to the badge's name with BBCode stripped, and the size to 24×24.
+
+The host resolves ids on the server after rendering and sends each badge's name, description and image once per card,
+beside the tree. Any existing badge may be drawn, held or not. An unknown id draws nothing, and a failed lookup draws no
+badges without failing the card. A card holds at most 32 distinct badge ids; further distinct ids are dropped, and
+repeats of a kept id are allowed. `<lc-badge-tooltip>` opens on hover and focus.

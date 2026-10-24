@@ -1,9 +1,10 @@
 #!/bin/sh
 # Builds every example's Server Guest, and its Canvas Guest where it has one, for wasm32-unknown-unknown. Each wasm is
 # copied into the example's cartridge/ directory as server.wasm or canvas.wasm, which is the layout a Cartridge is
-# packed from. Run it from anywhere; Rust and the wasm target suffice without game data. DOOM additionally needs WASI
-# SDK when its optional local WAD is present (see examples/doom/README.md). If cargo's build scripts
-# fail to link on macOS, set SDKROOT to an SDK your linker knows about; the README's troubleshooting note says how.
+# packed from. Run it from anywhere; Rust and the wasm target suffice without game data. DOOM and Schism additionally
+# run their own build.sh so their playable C engines are selected when WASI SDK 34 is available (see their READMEs).
+# If cargo's build scripts fail to link on macOS, set SDKROOT to an SDK your linker knows about; the README's
+# troubleshooting note says how.
 #
 # A guest's wasm is named after its crate's [lib] name, which the examples set to "plugin". The copy takes the
 # Cartridge's own file name instead.
@@ -29,9 +30,9 @@ build() {
   echo "built $cartridge/$artifact.wasm"
 }
 
-for name in poll hello snake hurtle paint breakout doom; do
+for name in poll hello snake hurtle paint breakout doom schism; do
   example="$ROOT/examples/$name"
-  if [ "$name" = doom ]; then
+  if [ "$name" = doom ] || [ "$name" = schism ]; then
     sh "$example/build.sh"
     continue
   fi

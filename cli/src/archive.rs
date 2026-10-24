@@ -16,7 +16,11 @@ const CD_SIG: u32 = 0x0201_4b50;
 const LOCAL_SIG: u32 = 0x0403_4b50;
 const EOCD_MIN: usize = 22;
 const EOCD_MAX_SEARCH: usize = EOCD_MIN + 0xffff;
-const ALLOWED: &str = "Cartridges may contain only manifest.json, server.wasm, canvas.wasm, templates/*.liquid and assets/**";
+const ALLOWED: &str =
+    "Cartridges may contain only manifest.json, server.wasm, canvas.wasm, style.css, templates/*.liquid and assets/**";
+
+/// The Cartridge's optional stylesheet, at the archive root (ABI v1 and v2). The host compiles it at upload.
+pub const STYLESHEET_PATH: &str = "style.css";
 
 static TEMPLATE_PATH: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^templates/([A-Za-z0-9_-]+)\.liquid$").expect("valid regex"));
@@ -160,6 +164,9 @@ pub fn plan_entries(entries: &[Entry], limits: &Limits) -> Result<Plan> {
         }
         if name == "manifest.json" {
             limit_file(entry, limits.manifest_bytes)?;
+            plan.files.push(entry.clone());
+        } else if name == STYLESHEET_PATH {
+            limit_file(entry, limits.stylesheet_bytes)?;
             plan.files.push(entry.clone());
         } else if name == "server.wasm" || name == "canvas.wasm" {
             limit_file(entry, limits.wasm_bytes)?;

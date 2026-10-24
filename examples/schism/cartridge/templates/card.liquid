@@ -1,0 +1,102 @@
+<section style="display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid #263238; border-radius: 12px; box-sizing: border-box; background-color: #070a0b; color: #cfd8d4; font-family: ui-monospace, monospace">
+  <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; color: #6f8a83; font-size: 0.8rem">
+    <lc-author></lc-author>
+    <lc-menu></lc-menu>
+  </div>
+
+  <div style="height: 4px; border-radius: 2px; background-image: repeating-linear-gradient(90deg, #2e7d6b 0, #2e7d6b 3px, #101817 3px, #101817 7px); opacity: 0.8"></div>
+
+  <div style="position: relative; isolation: isolate; overflow: hidden; display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid #2f4a43; border-radius: 10px; background-color: #0a1110; background-image: linear-gradient(155deg, #10201d 0%, #08100f 55%, #060a09 100%); box-shadow: inset 0 0 60px #000c, 0 0 0 1px #0007">
+    <div style="position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: -1; background-image: radial-gradient(circle at 14% 10%, #14b8a633, transparent 32%), radial-gradient(circle at 86% 18%, #f59e0b22, transparent 28%), repeating-linear-gradient(0deg, #ffffff05 0, #ffffff05 1px, transparent 1px, transparent 4px)"></div>
+    <div style="position: absolute; left: 0; right: 0; top: 0; height: 3px; z-index: -1; background-image: repeating-linear-gradient(90deg, #2dd4bf 0, #2dd4bf 2px, transparent 2px, transparent 6px); opacity: 0.5"></div>
+
+    <header style="display: flex; flex-direction: column; gap: 4px; text-align: center; padding: 2px 0 8px; border-bottom: 1px solid #2dd4bf26">
+      <p style="margin: 0; color: #5eead4; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.28em; text-transform: uppercase">IT // S3M // MOD // XM</p>
+      <h1 style="margin: 0; color: #eafffa; font-family: ui-monospace, monospace; font-weight: 900; font-size: 2.55rem; line-height: 0.95; letter-spacing: 0.08em; text-shadow: 0 2px 0 #115e59, 0 4px 0 #000, 0 0 26px #2dd4bf66">{{ title | escape }}</h1>
+      <p style="margin: 2px 0 0; color: #8fb3aa; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase">Original tracker // local modules</p>
+    </header>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 6px">
+      <div style="flex: 1 1 90px; min-width: 0; padding: 8px 9px; border: 1px solid #2f4a43; border-radius: 5px; background-color: #060d0ccc">
+        <p style="margin: 0 0 2px; color: #7d9b93; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase">Engine</p>
+        <p style="margin: 0; color: #d7e8e2; font-size: 0.82rem; font-weight: 700">Schism Tracker</p>
+      </div>
+      <div style="flex: 1 1 90px; min-width: 0; padding: 8px 9px; border: 1px solid #2f4a43; border-radius: 5px; background-color: #060d0ccc">
+        <p style="margin: 0 0 2px; color: #7d9b93; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase">Formats</p>
+        <p style="margin: 0; color: #d7e8e2; font-size: 0.82rem; font-weight: 700">{% for format in formats %}{{ format | escape }}{% unless forloop.last %} · {% endunless %}{% endfor %}</p>
+      </div>
+      <div style="flex: 1 1 90px; min-width: 0; padding: 8px 9px; border: 1px solid #2f4a43; border-radius: 5px; background-color: #060d0ccc">
+        <p style="margin: 0 0 2px; color: #7d9b93; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase">Modules</p>
+        <p style="margin: 0; color: #d7e8e2; font-size: 0.82rem; font-weight: 700">Local picker</p>
+      </div>
+    </div>
+
+    <p style="margin: 0; padding: 10px 12px; border-left: 3px solid #2e7d6b; border-radius: 0 5px 5px 0; background-color: #0c1715; color: #b7ccc5; font-size: 0.78rem; line-height: 1.55">{{ status | escape }}</p>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 7px; padding: 11px; border: 1px dashed #2f4a43; border-radius: 8px; background-color: #08100f">
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+      <p style="margin: 0; color: #5eead4; font-size: 0.64rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase">Module bay</p>
+      <span style="color: #6f8a83; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase">Client-local</span>
+    </div>
+    <lc-file name="module" target="client" accept=".it,.s3m,.mod,.xm,.669,.mtm,.stm,.far,.okt,.ult,.psm,.dsm,.imf,.mdl,.mus,.mid" max-bytes="16777216" label="Load a module"></lc-file>
+    <p style="margin: 0; color: #8fa9a1; font-size: 0.7rem; line-height: 1.45">Choose an Impulse Tracker, Scream Tracker, ProTracker, FastTracker or other supported tracker module (up to 16 MiB). The tracker keeps the song in memory only; load another module at any time. Nothing is uploaded or saved.</p>
+  </div>
+
+  <div style="padding: 8px; border: 1px solid #2f4a43; border-radius: 9px; background-image: linear-gradient(#0c1715, #050a09); box-shadow: inset 0 0 28px #000, 0 0 0 1px #000">
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 0 2px 7px; color: #5eead4; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase">
+      <span><span style="display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background-color: #2dd4bf; box-shadow: 0 0 8px #2dd4bf"></span>Live feed</span>
+      <span style="color: #6f8a83">{{ screen | escape }}</span>
+    </div>
+    <lc-canvas width="640" height="400" fullscreen touch="none" label="Schism Tracker. Load a module above with the picker, then click the canvas to use the tracker's pattern editor. F5 plays, F8 stops, F10 opens the menu, and the arrow keys move the cursor."></lc-canvas>
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 2px 0; color: #6f8a83; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase">
+      <span>Click canvas for keys</span>
+      <span>Speaker ↑ for sound</span>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 2px">
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-bottom: 4px; border-bottom: 1px solid #2f4a4355">
+      <p style="margin: 0; color: #5eead4; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase">Tracker keys</p>
+      <span style="color: #6f8a83; font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase">Keyboard + mouse</span>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 8px 16px">
+      <div style="flex: 1 1 130px; min-width: 0">
+        <p style="margin: 0 0 4px; color: #7d9b93; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase">Playback</p>
+        <p style="margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: #b7ccc5; font-size: 0.7rem"><span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">F5</span> play · <span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">F6</span> play pattern · <span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">F7</span> play row · <span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">F8</span> stop</p>
+      </div>
+      <div style="flex: 1 1 130px; min-width: 0">
+        <p style="margin: 0 0 4px; color: #7d9b93; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase">Edit</p>
+        <p style="margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: #b7ccc5; font-size: 0.7rem"><span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">Space</span> last note · <span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">1</span> note cut · <span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">`</span> note off · <span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">Ctrl</span>+<span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">Bksp</span> undo</p>
+      </div>
+      <div style="flex: 1 1 160px; min-width: 0">
+        <p style="margin: 0 0 4px; color: #7d9b93; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase">Screens</p>
+        <p style="margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: #b7ccc5; font-size: 0.7rem"><span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">F10</span> menu · <span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">F1</span> help · <span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">F2</span> pattern · <span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">F3</span> samples · <span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">F4</span> instruments</p>
+      </div>
+      <div style="flex: 1 1 160px; min-width: 0">
+        <p style="margin: 0 0 4px; color: #7d9b93; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase">Navigate</p>
+        <p style="margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: #b7ccc5; font-size: 0.7rem"><span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">↑</span><span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">↓</span><span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">←</span><span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">→</span> cursor · <span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">PgUp</span><span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">PgDn</span> page · <span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">Tab</span> next channel</p>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 5px; padding-top: 6px; border-top: 1px solid #2f4a4355">
+      <p style="margin: 0 0 1px; color: #7d9b93; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase">System</p>
+      <p style="margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: #b7ccc5; font-size: 0.7rem">
+        <span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">Shift</span>+<span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">F5</span> preferences ·
+        <span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">Ctrl</span>+<span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">F1</span> system ·
+        <span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">Ctrl</span>+<span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">F12</span> palette ·
+        <span style="padding: 2px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #101c1a; box-shadow: 0 2px 0 #000">F10</span> back
+      </p>
+      <p style="margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: #8fa9a1; font-size: 0.68rem">
+        <span style="padding: 1px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #0a1211; color: #7d9b93">Click</span> canvas to focus ·
+        <span style="padding: 1px 5px; border: 1px solid #2f4a43; border-radius: 3px; background-color: #0a1211; color: #7d9b93">Speaker ↑</span> starts muted ·
+        blur pauses audio
+      </p>
+    </div>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding-top: 8px; border-top: 1px solid #2f4a4355">
+    <lc-reply></lc-reply>
+    <lc-rechitt></lc-rechitt>
+  </div>
+  <lc-reactions></lc-reactions>
+</section>

@@ -33,6 +33,8 @@ what happens past a limit is one of these:
 | Template files under `templates/` | 64 | refused at upload |
 | One template file | 256 KiB | refused at upload |
 | `manifest.json` | 16 KiB | refused at upload |
+| `style.css` (see [stylesheets](stylesheets.md)) | 64 KiB, valid UTF-8 | refused at upload |
+| `style.css` once compiled with Tailwind | 256 KiB | refused at upload |
 | `name` in the manifest | 80 characters | refused at upload |
 | `version` in the manifest | 40 characters | refused at upload |
 | A template's name (the part before `.liquid`) | 64 characters, `A-Z a-z 0-9 _ -` | refused at upload |

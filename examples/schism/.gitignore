@@ -1,0 +1,10 @@
+target/
+canvas/target/
+.tools/
+cartridge/*.wasm
+*.cartridge
+# Test modules are built in the test scripts; do not commit module files.
+*.it
+*.s3m
+*.mod
+*.xm

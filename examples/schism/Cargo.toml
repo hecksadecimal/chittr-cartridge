@@ -1,0 +1,28 @@
+[package]
+name = "schism"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-2.0-only"
+
+[lib]
+name = "plugin"
+crate-type = ["cdylib"]
+
+[dependencies]
+extism-pdk = "1.1.0"
+chrono = { version = "0.4", default-features = false, features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+base64-serde = "0.7"
+base64 = "0.21"
+chittr-cartridge = { package = "chittr-cartridge-sdk", path = "../../sdk/chittr-cartridge" }
+
+[dev-dependencies]
+chittr-cartridge = { package = "chittr-cartridge-sdk", path = "../../sdk/chittr-cartridge", features = ["testing"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+
+[workspace]

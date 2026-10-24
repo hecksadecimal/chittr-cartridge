@@ -121,6 +121,9 @@ with `<lc-canvas>`. a Cartridge with `canvas.wasm` has to place it, or the uploa
 `load_sound`), a font named in `fonts`, or data the Server Guest reads with `asset()`. the validator checks the sizes and names
 of everything in it.
 
+`style.css` is optional. put one next to `manifest.json` and ur card gets its own CSS and Tailwind classes, scoped to
+the card. [stylesheets](stylesheets.md) has the rules.
+
 the poll's `cartridge/` directory is the complete example of these files.
 
 ## 4. Check, build and pack

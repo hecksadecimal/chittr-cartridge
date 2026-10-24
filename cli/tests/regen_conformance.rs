@@ -448,6 +448,34 @@ fn cases() -> Vec<Case> {
         bad(format!("notes.txt: is not an allowed file; {ALLOWED}")),
     ));
     cases.push(files(
+        "stylesheet-ok",
+        put(base(), "style.css", b".note { color: red; }".to_vec()),
+        ok(),
+    ));
+    cases.push(files(
+        "stylesheet-not-utf8",
+        put(base(), "style.css", vec![0xff, 0xfe, 0x00]),
+        bad("style.css: is not valid UTF-8"),
+    ));
+    cases.push(files(
+        "badge-v1-refused",
+        put(base(), "templates/card.liquid", card(r#"<lc-badge id="founder"></lc-badge>"#)),
+        bad(r#"templates/card.liquid: <lc-badge> and <lc-badge-tooltip> are only allowed when "v" is 2"#),
+    ));
+    cases.push(files(
+        "badge-tooltip-v1-refused",
+        put(base(), "templates/card.liquid", card(r#"<lc-badge-tooltip id="founder"></lc-badge-tooltip>"#)),
+        bad(r#"templates/card.liquid: <lc-badge> and <lc-badge-tooltip> are only allowed when "v" is 2"#),
+    ));
+    cases.push(files(
+        "badge-v2-ok",
+        with_manifest_and_template(
+            json!({"v": 2, "name": "Case", "version": "0.1.0"}),
+            &card(r#"<lc-badge id="founder"></lc-badge><lc-badge-tooltip id="founder"></lc-badge-tooltip>"#),
+        ),
+        ok(),
+    ));
+    cases.push(files(
         "unknown-template-extension",
         put(base(), "templates/card.html", b"<p>hi</p>".to_vec()),
         bad(format!(
@@ -719,6 +747,12 @@ fn cases() -> Vec<Case> {
         put(base(), "assets/big.bin", vec![0u8; 11]),
         &[("assetBytes", 10)],
         bad("assets/big.bin: is 11 bytes; the limit is 10"),
+    ));
+    cases.push(files_limits(
+        "stylesheet-over-limit",
+        put(base(), "style.css", vec![b' '; 11]),
+        &[("stylesheetBytes", 10)],
+        bad("style.css: is 11 bytes; the limit is 10"),
     ));
     cases.push(files(
         "manifest-over-limit",
@@ -1061,7 +1095,8 @@ fn cases() -> Vec<Case> {
     cases
 }
 
-const ALLOWED: &str = "Cartridges may contain only manifest.json, server.wasm, canvas.wasm, templates/*.liquid and assets/**";
+const ALLOWED: &str =
+    "Cartridges may contain only manifest.json, server.wasm, canvas.wasm, style.css, templates/*.liquid and assets/**";
 
 fn corpus_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../conformance/cases")

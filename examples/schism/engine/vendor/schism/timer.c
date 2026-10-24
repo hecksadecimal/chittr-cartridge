@@ -1,0 +1,317 @@
+/*
+ * Schism Tracker - a cross-platform Impulse Tracker clone
+ * copyright (c) 2003-2005 Storlek <storlek@rigelseven.com>
+ * copyright (c) 2005-2008 Mrs. Brisby <mrs.brisby@nimh.org>
+ * copyright (c) 2009 Storlek & Mrs. Brisby
+ * copyright (c) 2010-2012 Storlek
+ * URL: http://schismtracker.org/
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
+
+#include "headers.h"
+#include "loadso.h"
+#include "mem.h"
+#include "mt.h"
+#include "atomic.h"
+
+#include "backend/timer.h"
+
+static const schism_timer_backend_t *backend = NULL;
+
+timer_ticks_t timer_ticks(void)
+{
+	return backend->ticks();
+}
+
+timer_ticks_t timer_ticks_us(void)
+{
+	if (backend->ticks_us)
+		return backend->ticks_us();
+
+	/* MS -> US */
+	return timer_ticks() * UINT64_C(1000);
+}
+
+void timer_usleep(uint64_t usec)
+{
+#if defined(HAVE_NANOSLEEP) && !defined(SCHISM_WIN32)
+	// nanosleep is newer and preferred to usleep
+	struct timespec s = {
+		.tv_sec = usec / 1000000,
+		.tv_nsec = (usec % 1000000) * 1000,
+	};
+
+	while (nanosleep(&s, &s) == -1);
+#elif defined(HAVE_USLEEP) && !defined(SCHISM_WIN32)
+	while (usec) {
+		/* usleep is only guaranteed to succeed on 0-999999 */
+		useconds_t t = MIN(usec, 999999);
+		usleep(t);
+		usec -= t;
+	}
+#else
+	backend->usleep(usec);
+#endif
+}
+
+void timer_msleep(uint32_t ms)
+{
+	backend->msleep(ms);
+}
+
+#ifdef USE_THREADS
+/* XXX: these pointers ought to be atomic too. */
+static mt_thread_t *timer_oneshot_thread = NULL;
+static struct atm timer_oneshot_thread_cancelled = { 0 };
+
+/* this protects the oneshot PENDING list, not the actual
+ * list itself (important!) */
+static mt_mutex_t *timer_oneshot_mutex = NULL;
+static mt_sem_t *timer_oneshot_sem = NULL;
+#endif
+
+// A linked list of timers.
+struct timer_oneshot_data_ {
+	void (*callback)(void *param);
+	void *param;
+
+	// Ticks until the oneshot should be called, in microseconds.
+	timer_ticks_t trigger;
+
+	struct timer_oneshot_data_ *next;
+};
+
+// A list of pending timers that will be added to the real list
+// by the running thread.
+#ifdef USE_THREADS
+SCHISM_GUARDED_BY(timer_oneshot_mutex)
+#endif
+static struct timer_oneshot_data_ *oneshot_data_pending = NULL;
+
+// this should NEVER be touched outside of the worker/thread
+static struct timer_oneshot_data_ *oneshot_data_list = NULL;
+
+/* This function does all the heavy lifting (INCLUDING mutex crap) */
+static timer_ticks_t timer_oneshot_work_(void)
+{
+	timer_ticks_t wait;
+
+#ifdef USE_THREADS
+	mt_mutex_lock(timer_oneshot_mutex);
+#endif
+
+	// Copy pending timers to the big list
+	if (oneshot_data_pending) {
+		if (oneshot_data_list) {
+			struct timer_oneshot_data_ *tail = oneshot_data_list;
+			while (tail->next)
+				tail = tail->next;
+			tail->next = oneshot_data_pending;
+		} else {
+			oneshot_data_list = oneshot_data_pending;
+		}
+
+		oneshot_data_pending = NULL;
+	}
+
+#ifdef USE_THREADS
+	mt_mutex_unlock(timer_oneshot_mutex);
+#endif
+
+	// Now process any timers that have finished
+	wait = UINT64_MAX;
+
+	if (oneshot_data_list) {
+		struct timer_oneshot_data_ *data = oneshot_data_list, *prev = NULL;
+		timer_ticks_t now = timer_ticks_us();
+
+		while (data) {
+			if (timer_ticks_passed(now, data->trigger)) {
+				data->callback(data->param);
+
+				now = timer_ticks_us();
+
+				// Remove the timer from the list
+				if (prev) {
+					prev->next = data->next;
+				} else {
+					oneshot_data_list = data->next;
+				}
+
+				// free the data
+				void *old = data;
+				data = data->next;
+				free(old);
+			} else {
+				wait = MIN(wait, data->trigger - now);
+
+				prev = data;
+				data = data->next;
+			}
+		}
+	}
+
+	if (wait < 1000) wait = 1000;
+
+	return wait / 1000;
+}
+
+#ifdef USE_THREADS
+static int timer_oneshot_thread_func(SCHISM_UNUSED void *userdata)
+{
+	mt_thread_set_priority(MT_THREAD_PRIORITY_HIGH);
+
+	while (!atm_load(&timer_oneshot_thread_cancelled)) {
+		timer_ticks_t wait = timer_oneshot_work_();
+		mt_sem_wait_timeout(timer_oneshot_sem, wait);
+	}
+
+	return 0;
+}
+#endif
+
+int timer_oneshot_worker(void)
+{
+#ifdef USE_THREADS
+	if (timer_oneshot_thread || backend->oneshot)
+		return 0; // do nothing
+#endif
+
+	timer_oneshot_work_();
+
+	return 0;
+}
+
+void timer_oneshot(uint32_t ms, void (*callback)(void *param), void *param)
+{
+	if (backend->oneshot) {
+		backend->oneshot(ms, callback, param);
+		// mmmmmmmmm
+		return;
+	}
+
+	// Ok, the backend doesn't support oneshots or it failed to make an event.
+	// Make a thread that "emulates" kernel-level events.
+
+	struct timer_oneshot_data_ *data = mem_alloc(sizeof(*data));
+
+	data->callback = callback;
+	data->param = param;
+	data->trigger = timer_ticks_us() + (ms * UINT64_C(1000));
+	data->next = NULL;
+
+#ifdef USE_THREADS
+	mt_mutex_lock(timer_oneshot_mutex);
+#endif
+
+	// append it to the list
+	if (oneshot_data_pending) {
+		struct timer_oneshot_data_ *tail = oneshot_data_pending;
+		while (tail->next)
+			tail = tail->next;
+		tail->next = data;
+	} else {
+		oneshot_data_pending = data;
+	}
+
+#ifdef USE_THREADS
+	mt_mutex_unlock(timer_oneshot_mutex);
+
+	if (timer_oneshot_thread)
+		mt_sem_post(timer_oneshot_sem);
+#endif
+}
+
+static void timer_setup_oneshot(void) SCHISM_THREAD_SAFE
+{
+	/* Technically, this next line is the only one that needs
+	 * SCHISM_THREAD_SAFE, but whatever */
+	oneshot_data_pending = NULL;
+	oneshot_data_list = NULL;
+
+#ifdef USE_THREADS
+	timer_oneshot_mutex = mt_mutex_create();
+	timer_oneshot_sem = mt_sem_create();
+
+	atm_store(&timer_oneshot_thread_cancelled, 0);
+	timer_oneshot_thread = mt_thread_create(timer_oneshot_thread_func,
+		"Timer oneshot thread", NULL);
+#endif
+}
+
+int timer_init(void)
+{
+	static const schism_timer_backend_t *backends[] = {
+		// ordered by preference
+#ifdef SCHISM_WIN32
+		&schism_timer_backend_win32,
+#endif
+#ifdef SCHISM_SDL3
+		&schism_timer_backend_sdl3,
+#endif
+#ifdef SCHISM_SDL2
+		&schism_timer_backend_sdl2,
+#endif
+#ifdef SCHISM_SDL12
+		&schism_timer_backend_sdl12,
+#endif
+		NULL,
+	};
+
+	int i;
+
+	for (i = 0; backends[i]; i++) {
+		backend = backends[i];
+		if (backend->init())
+			break;
+
+		backend = NULL;
+	}
+
+	if (!backend)
+		return 0;
+
+	/* XXX should just use builtin oneshot everywhere */
+	if (!backend->oneshot)
+		timer_setup_oneshot();
+
+	return 1;
+}
+
+void timer_quit(void)
+{
+#ifdef USE_THREADS
+	// Kill the oneshot stuff if needed.
+	if (timer_oneshot_thread) {
+		atm_store(&timer_oneshot_thread_cancelled, 1);
+		mt_sem_post(timer_oneshot_sem);
+		mt_thread_wait(timer_oneshot_thread, NULL);
+		timer_oneshot_thread = NULL;
+		mt_sem_delete(timer_oneshot_sem);
+		timer_oneshot_sem = NULL;
+	}
+
+	if (timer_oneshot_mutex) {
+		mt_mutex_delete(timer_oneshot_mutex);
+		timer_oneshot_mutex = NULL;
+	}
+#endif
+
+	if (backend) {
+		backend->quit();
+		backend = NULL;
+	}
+}

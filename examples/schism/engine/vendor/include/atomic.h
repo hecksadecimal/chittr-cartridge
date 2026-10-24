@@ -1,0 +1,86 @@
+/*
+ * Schism Tracker - a cross-platform Impulse Tracker clone
+ * copyright (c) 2003-2005 Storlek <storlek@rigelseven.com>
+ * copyright (c) 2005-2008 Mrs. Brisby <mrs.brisby@nimh.org>
+ * copyright (c) 2009 Storlek & Mrs. Brisby
+ * copyright (c) 2010-2012 Storlek
+ * URL: http://schismtracker.org/
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
+
+#ifndef SCHISM_ATOMIC_H_
+#define SCHISM_ATOMIC_H_
+
+#include "headers.h"
+
+struct atm {
+	volatile int32_t x;
+};
+
+struct atm64 {
+	volatile int64_t x;
+};
+
+struct atm_ptr {
+#if SIZEOF_VOID_P == 8
+	struct atm64 x;
+#elif SIZEOF_VOID_P == 4
+	struct atm x;
+#else
+	/* ??? */
+	void *volatile x;
+#endif
+};
+
+/* init/quit functions are ONLY for mutexes */
+int atm_init(void);
+void atm_quit(void);
+
+/* Atomic compare and swap (exchange). */
+int atm_cmpxchg(struct atm *atm, int32_t oldval, int32_t newval);
+int32_t atm_load(struct atm *atm);
+void atm_store(struct atm *atm, int32_t x);
+/* Adds 'x' to the atomic 'atm' and returns the original value
+ * held by 'atm' before the addition. */
+int32_t atm_add(struct atm *atm, int32_t x);
+/* Subtracts 'x' from the atomic 'atm' and returns the original value
+ * held by 'atm' before the subtraction. */
+int32_t atm_sub(struct atm *atm, int32_t x);
+/* Increments 'atm' by 1 */
+int32_t atm_inc(struct atm *atm);
+/* Decrements 'atm' by 1 */
+int32_t atm_dec(struct atm *atm);
+
+/* Atomic compare and swap (exchange) */
+int atm64_cmpxchg(struct atm64 *atm, int64_t oldval, int64_t newval);
+int64_t atm64_load(struct atm64 *atm);
+void atm64_store(struct atm64 *atm, int64_t x);
+/* Adds 'x' to the atomic 'atm' and returns the original value
+ * held by 'atm' before the addition. */
+int64_t atm64_add(struct atm64 *atm, int64_t x);
+/* Subtracts 'x' from the atomic 'atm' and returns the original value
+ * held by 'atm' before the subtraction. */
+int64_t atm64_sub(struct atm64 *atm, int64_t x);
+/* Increments 'atm' by 1 */
+int64_t atm64_inc(struct atm64 *atm);
+/* Decrements 'atm' by 1 */
+int64_t atm64_dec(struct atm64 *atm);
+
+int atm_ptr_cmpxchg(struct atm_ptr *atm, void *oldval, void *newval);
+void *atm_ptr_load(struct atm_ptr *atm);
+void atm_ptr_store(struct atm_ptr *atm, void *x);
+
+#endif /* SCHISM_ATOMIC_H_ */

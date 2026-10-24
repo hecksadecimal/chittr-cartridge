@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "templates/sub/card.liquid: is not an allowed file; Cartridges may contain only manifest.json, server.wasm, canvas.wasm, templates/*.liquid and assets/**"
+  "error": "templates/sub/card.liquid: is not an allowed file; Cartridges may contain only manifest.json, server.wasm, canvas.wasm, style.css, templates/*.liquid and assets/**"
 }
