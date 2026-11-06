@@ -318,6 +318,10 @@ the poster's account, checked on every call and answering `forbidden` without it
 
 `duration` is one of `1m`, `5m`, `15m`, `30m`, `1h`, `24h`, `7d`, `30d`, `permanent`.
 
+`ban_user`, `unban_user`, `grant_badge_to_user` and `revoke_badge_from_user` answer `not_found` for a `userId` that names no
+account. That includes an opaque `Observer.userId`, which an Observer carries unless the poster's account holds `user_banning`
+or `badge_management`.
+
 ### Render Pushes (Server Guest, `extism:host/user`)
 
 `push_render` tells the Chitt's Observers that its card has changed, so their clients fetch a fresh render. It takes

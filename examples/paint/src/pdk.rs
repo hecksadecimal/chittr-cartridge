@@ -1354,7 +1354,7 @@ pub mod types {
         #[serde(rename = "trolltag")]
         pub trolltag: String,
 
-        /// The owning user's id. Raw by human choice; a guest can leak it into rendered output.
+        /// The viewing account's id as this Cartridge may see it. The real user id when the poster's account holds `user_banning` or `badge_management`, checked on every call. Otherwise an opaque value derived from this Character, unrelated across an account's Characters and naming no account; it can change if the server's key rotates, so don't store it as permanent.
         #[serde(rename = "userId")]
         pub user_id: String,
     }
